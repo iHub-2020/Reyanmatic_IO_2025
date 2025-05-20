@@ -150,7 +150,8 @@ jobs:
 
           # 最大化利用CPU核心数进行并发编译
           echo -e "$(nproc) thread compile"
-          make -j$(nproc) || make -j1 || make -j1 V=s
+          # make -j$(nproc) || make -j1 || make -j1 V=s
+          make -j$(nproc) || make -j1 V=s
 
           # 编译成功后写入输出变量
           echo "status=success" >> $GITHUB_OUTPUT
