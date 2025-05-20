@@ -1,0 +1,155 @@
+#=================================================
+# Description: Build OpenWrt using GitHub Actions
+# License: MIT
+# Author: Reyanmatic
+# Website: https://www.reyanmatic.com
+#=================================================
+
+name: 01_Build_x86_64
+
+on: 
+  repository_dispatch:  # 通过API外部触发
+  workflow_dispatch:    # 手动触发按钮
+
+jobs:
+  build:
+    # GitHub官方runner不支持直接指定debian-11，仅支持ubuntu-20.04/22.04等
+    runs-on: ubuntu-22.04
+
+    steps:
+    # 1. 编译前空间检查
+    - name: Before freeing up disk space
+      run: |
+        echo "Before freeing up disk space"
+        echo "=============================================================================="
+        df -hT
+        echo "=============================================================================="
+
+    # 2. 优化磁盘空间，深度清理无用内容
+    - name: Optimize Disk Space
+      uses: hugoalh/disk-space-optimizer-ghaction@v0.8.1
+      with:
+        operate_sudo: "True"
+        general_include: ".+"
+        general_exclude: |-
+          ^GCC$
+          ^G\+\+$
+          Clang
+          LLVM
+        docker_include: ".+"
+        docker_prune: "True"
+        docker_clean: "True"
+        apt_prune: "True"
+        apt_clean: "True"
+        homebrew_prune: "True"
+        homebrew_clean: "True"
+        npm_prune: "True"
+        npm_clean: "True"
+        os_swap: "True"
+
+    # 3. 重新挂载大空间分区，突破14G限制
+    - name: Freeing up disk space
+      uses: easimon/maximize-build-space@master
+      with: 
+        root-reserve-mb: 2048
+        swap-size-mb: 1
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'true'
+
+    # 4. 空间释放后的再次检查
+    - name: Free up disk space complete
+      run: |
+        echo "Free up disk space complete"
+        echo "=============================================================================="
+        df -hT
+        echo "=============================================================================="
+
+    # 5. 拉取代码仓库
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # 6. 初始化环境并安装必要依赖
+    - name: Initialization environment
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        # 6.1 安装基础编译环境和OpenWrt所需依赖
+        sudo -E apt-get -qq update
+        # 6.2 ??
+        sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+        bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+        genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
+        libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
+        libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
+        python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+        swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+        # 6.3 ??
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+        # 释放系统空间，删除多余内容
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /opt/ghc /usr/share/dotnet /usr/local/graalvm /usr/local/.ghcup /usr/local/share/powershell /usr/local/share/chromium /usr/local/lib/node_modules
+        # 6.4 ??
+        sudo timedatectl set-timezone "Asia/Shanghai"
+        # 6.5 修正GitHub工作目录权限
+        sudo chown $USER:$(id -gn) $GITHUB_WORKSPACE
+
+    # 7. 克隆主仓库代码并引入额外 feeds
+    - name: Clone source code and configure feeds
+      env: 
+        REPO_URL: https://github.com/coolsnowwolf/lede
+        REPO_BRANCH: master
+      run: |
+        git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+        cd openwrt
+        # 可选：添加额外feeds
+        echo "src-git reyan https://github.com/iHub-2020/openwrt-reyan_new.git" >> ./feeds.conf.default
+
+    # 8. 更新和安装 feeds
+    - name: Update & Install feeds
+      working-directory: ./openwrt
+      run: |
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    # 9. 配置定制化设置
+    - name: Configuration Customization - Build_x86_64
+      env:
+        CONFIG_FILE: 'x86_64.config'
+      run: |
+        # 覆盖自定义配置文件
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        # 执行自定义脚本（如补丁、logo、精简package等）
+        chmod +x ./customize.sh && ./customize.sh
+        # ??
+        cd openwrt && make defconfig
+
+    # 10. 下载依赖包并清理无效下载
+    - name: Download package
+      working-directory: ./openwrt
+      run: |
+        # ??
+        make download -j$(nproc)
+        # 删除无效/损坏的下载文件，节省空间
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+        # ??
+        df -hT
+
+    # 11. 编译固件并清理中间产物
+    - name: Build firmware
+      working-directory: ./openwrt
+      run: |
+        # ??
+        echo -e "$(nproc) thread build."
+        # ??
+        make -j$(nproc) V=s
+
+    # 12. 上传编译结果
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenWrt
+        path: openwrt/bin

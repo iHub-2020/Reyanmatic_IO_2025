@@ -1,0 +1,18 @@
+		{% if (!blank_page): %}
+		</div>
+		<footer>
+			<span>
+				Powered by
+				<a href="https://www.reyanmatic.com" target="_blank" rel="noreferrer">
+					<strong>2025 Reyanmatic Technology. All Rights Reserved</strong></a>
+				({{ version.luciversion }}) / {{ version.distname }} {{ version.distversion }}
+				{% if (lua_active): %}
+					/ {{ _('Lua compatibility mode active') }}
+				{% endif %}
+			</span>
+			<ul class="breadcrumb pull-right" id="modemenu" style="display:none"></ul>
+		</footer>
+		<script type="text/javascript">L.require('menu-bootstrap')</script>
+		{% endif %}
+	</body>
+</html>

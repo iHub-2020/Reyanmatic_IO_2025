@@ -1,0 +1,58 @@
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+# File: .github/workflows/update-checker.yml
+# Description: Source code update checker
+#
+
+name: 04_Update_Checker  # 工作流名称
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede  # 要检测的主仓库地址
+  REPO_BRANCH: master                            # 要检测的分支
+
+on:
+  workflow_dispatch:  # 支持手动触发
+  # 如需定时检测可取消注释下面的 schedule，按需调整频率
+  # schedule:
+  #   - cron: 0 */18 * * *
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 拉取源码并获取最新 commit hash
+      - name: Get Commit Hash
+        id: getHash
+        run: |
+          git clone --depth 1 $REPO_URL -b $REPO_BRANCH .
+          echo "commitHash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      # 2. 用 actions/cache 缓存本次 commit hash，便于对比变化
+      - name: Compare Commit Hash
+        id: cacheHash
+        uses: actions/cache@v3
+        with:
+          path: .commitHash
+          key: commitHash_${{ steps.getHash.outputs.commitHash }}
+
+      # 3. 如果 commit hash 发生变化，则保存新的 commit hash 到 .commitHash
+      - name: Save New Commit Hash
+        if: steps.cacheHash.outputs.cache-hit != 'true'
+        run: |
+          echo ${{ steps.getHash.outputs.commitHash }} | tee .commitHash
+
+      # 4. 如果 commit hash 变化，触发主固件编译 workflow
+      - name: Trigger build
+        if: steps.cacheHash.outputs.cache-hit != 'true'
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ github.token }}
+          event-type: Source Code Update
+
+      # 5. 自动清理历史 workflow 运行记录，仅保留最近2次
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 0
+          keep_minimum_runs: 2
