@@ -1,9 +1,10 @@
 #!/bin/bash
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-# File name: diy-part3.sh
-# Description: OpenWrt DIY script part 3 (After Update feeds) 仅适用于R2S
-#
+#=========================================================================
+# Description : OpenWrt DIY script part 3 (After Update feeds) 仅适用于R2S
+# Lisence     : MIT
+# Author      : Reyanmatic
+# Website     : https:www.reyanmatic.com
+#=========================================================================
 
 set -e  # 有错误立即退出
 # set -x  # 显示每条命令（调试用，生产可去掉）
