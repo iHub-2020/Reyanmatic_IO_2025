@@ -200,7 +200,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }}            # ★ 改这里！使用自定义PAT
+          # token: ${{ secrets.GH_RELEASE_TOKEN }}            # ★ 改这里！使用自定义PAT
+          token: ${{ secrets.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 }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
@@ -223,4 +224,5 @@ jobs:
           keep_latest: 3
           delete_tags: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}      # ★ 这里建议也同步用PAT
+          # GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}      # ★ 这里建议也同步用PAT
+          GITHUB_TOKEN: ${{ secrets.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 }}
