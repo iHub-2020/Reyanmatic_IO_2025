@@ -1,10 +1,11 @@
 #!/bin/bash
-#=================================================
-# Description: DIY script
-# Lisence: MIT
-# Author: eSirPlayground
-# Youtube Channel: https://goo.gl/fvkdwm 
-#=================================================
+#==========================================================================
+# Description : OpenWrt customize script-1 (After Update feeds) 仅适用于x86
+# Lisence     : MIT
+# Author      : Reyanmatic
+# Website     : https:www.reyanmatic.com
+#==========================================================================
+
 echo "========== 开始执行 customize-1.sh =========="
 
 set -e  # 遇到错误立即退出脚本
