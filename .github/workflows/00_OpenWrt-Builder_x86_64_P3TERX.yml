@@ -25,7 +25,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       # 1. 编译前空间检查
@@ -43,7 +43,7 @@ jobs:
           # root-reserve-mb: 保留根分区剩余空间（以MB计），建议≥2048，避免apt等系统操作失败
           # swap-size-mb: swap设置为1MB即可最大化可用空间
           # 只移除无关大目录，对依赖无影响
-          root-reserve-mb: 2048
+          root-reserve-mb: 4096
           swap-size-mb: 1
           remove-dotnet: 'true'
           remove-android: 'true'
@@ -124,7 +124,7 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # 12. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
+# 12. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
       - name: Compile the firmware
         id: compile
         run: |
@@ -141,6 +141,8 @@ jobs:
           # 3. "make -j$(nproc)" 若失败则自动降级为单线程（-j1），
           #    再次失败则以详细日志（V=s）输出，方便排查编译错误。
           #
+          #    - 若所有尝试均失败，则主动 exit 1，确保流程终止，不再执行后续步骤。
+          #
           # 4. 编译成功后自动提取设备名（DEVICE_NAME）和编译时间戳（FILE_DATE），
           #    并写入环境变量，便于后续固件归档、命名、上传release等。
           #
@@ -148,15 +150,28 @@ jobs:
           #
           # ===========================================================
 
-          # 最大化利用CPU核心数进行并发编译
-          echo -e "$(nproc) thread compile"
-          # make -j$(nproc) || make -j1 || make -j1 V=s
-          make V=s -j1
+          # 遇到任意错误立即终止脚本，防止后续步骤误执行
+          set -e
 
-          # 编译成功后写入输出变量
+          echo ">>> 检测CPU核心数，准备并发编译..."
+          echo "CPU核心数: $(nproc)"
+          echo ">>> 开始多核并发编译..."
+          if ! make -j$(nproc); then
+            echo "!!! 多核编译失败，尝试单核编译..."
+            if ! make -j1; then
+              echo "!!! 单核也失败，输出详细日志..."
+              make -j1 V=s
+              echo "!!! 编译彻底失败，终止流程。"
+              exit 1
+            fi
+          fi
+
+          echo ">>> 编译成功，写入输出变量"
           echo "status=success" >> $GITHUB_OUTPUT
+          # 提取设备名
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          # 写入编译日期
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       # 13. 查看磁盘空间
