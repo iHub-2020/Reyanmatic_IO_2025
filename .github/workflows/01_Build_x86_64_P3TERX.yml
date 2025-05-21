@@ -176,14 +176,13 @@ jobs:
 
       # 13. 查看磁盘空间
       - name: Check space usage
-        # 只有编译成功才看空间
         if: steps.compile.outputs.status == 'success'
         run: df -hT
       
       # 14. 上传 bin 目录（可选）
       - name: Upload bin directory
         uses: actions/upload-artifact@v4
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        if: steps.compile.outputs.status == 'success'
         with:
           name: OpenWrt_bin_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
@@ -191,7 +190,7 @@ jobs:
       # 15. 整理固件文件，只保留最终固件
       - name: Organize files
         id: organize
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+        if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
@@ -201,7 +200,7 @@ jobs:
       # 16. 上传固件目录
       - name: Upload firmware directory
         uses: actions/upload-artifact@v4
-        if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+        if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
         with:
           name: OpenWrt_firmware_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
@@ -209,7 +208,7 @@ jobs:
       # 17. 生成 Release 标签
       - name: Generate release tag
         id: tag
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+        if: steps.compile.outputs.status == 'success'
         run: |
           echo "release_tag=x86-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
           touch release.txt
@@ -237,7 +236,7 @@ jobs:
       # 20. 删除旧的 Releases，只保留最新3次
       - name: Remove old Releases
         uses: dev-drprasad/delete-older-releases@v0.3.3
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+        if: steps.compile.outputs.status == 'success'
         with:
           keep_latest: 3
           delete_tags: true
