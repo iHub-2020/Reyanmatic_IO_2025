@@ -1,0 +1,243 @@
+#=================================================
+# Description: Build OpenWrt using GitHub Actions
+# License: MIT
+# Author: Reyanmatic
+# Website: https://www.reyanmatic.com
+#=================================================
+
+name: 02_Build_R2S_P3TERX
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: R2S.config
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  UPLOAD_BIN_DIR: 'false'
+  UPLOAD_FIRMWARE: 'true'
+  UPLOAD_RELEASE: 'true'
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 编译前空间检查
+      - name: Before freeing up disk space
+        run: |
+          echo "Before freeing up disk space"
+          echo "=============================================================================="
+          df -hT
+          echo "=============================================================================="
+
+      # 2. maximize-build-space：LVM重新挂载build空间，突破14G限制，并清理指定大目录
+      - name: Freeing up disk space
+        uses: easimon/maximize-build-space@master
+        with:
+          # root-reserve-mb: 保留根分区剩余空间（以MB计），建议≥2048，避免apt等系统操作失败
+          # swap-size-mb: swap设置为1MB即可最大化可用空间
+          # 只移除无关大目录，对依赖无影响
+          root-reserve-mb: 4096
+          swap-size-mb: 1
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          # 其它参数保持默认，确保最大空间且系统依赖不丢失
+
+      # 3. 空间释放后的检查
+      - name: Free up disk space complete
+        run: |
+          echo "Free up disk space complete"
+          echo "=============================================================================="
+          df -hT
+          echo "=============================================================================="
+
+      # 4. 拉取仓库
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 5. 初始化环境，安装依赖
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -qq update
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+          genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
+          libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
+          libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
+          python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
+      
+      # 6. 克隆主源码仓库
+      - name: Clone source code
+        working-directory: ./
+        run: |
+          df -hT $PWD
+          git clone ${REPO_URL} -b ${REPO_BRANCH} openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+      # 7. 加载自定义feeds（可选）
+      - name: Load custom feeds
+        run: |
+          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+          chmod +x $DIY_P1_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P1_SH
+
+      # 8. 更新 feeds
+      - name: Update feeds
+        run: cd openwrt && ./scripts/feeds update -a
+
+      # 9. 安装 feeds
+      - name: Install feeds
+        run: cd openwrt && ./scripts/feeds install -a
+
+      # 10. 配置定制化与深度自定义（务必在 make defconfig 前执行）
+      - name: Configuration & Customization (核心步骤)
+        run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
+          chmod +x $DIY_P2_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+      # 11. 补全配置并下载dl依赖包
+      - name: Make defconfig & Download packages
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+# 12. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
+      - name: Compile the firmware
+        id: compile
+        run: |
+          cd openwrt
+          # ========================= 注释详解 =========================
+          # 本步骤为整个工作流的核心：进行OpenWrt固件编译。
+          # 
+          # 1. 极度依赖前几步的空间优化（如 maximize-build-space、手动清理），
+          #    编译OpenWrt体积极大，未优化空间可能会 OOM 或磁盘爆满导致失败。
+          #
+          # 2. "$(nproc)" 会自动获取当前系统的CPU核心数，实现最大化利用所有CPU资源，
+          #    并发编译，大幅提升编译速度（如runner有2核则-j2，有8核则-j8）。
+          #
+          # 3. "make -j$(nproc)" 若失败则自动降级为单线程（-j1），
+          #    再次失败则以详细日志（V=s）输出，方便排查编译错误。
+          #
+          #    - 若所有尝试均失败，则主动 exit 1，确保流程终止，不再执行后续步骤。
+          #
+          # 4. 编译成功后自动提取设备名（DEVICE_NAME）和编译时间戳（FILE_DATE），
+          #    并写入环境变量，便于后续固件归档、命名、上传release等。
+          #
+          # 5. 如遇空间不足/报错，可返回第3步调整 root-reserve-mb 参数或加强清理。
+          #
+          # ===========================================================
+
+          # 遇到任意错误立即终止脚本，防止后续步骤误执行
+          set -e
+
+          echo ">>> 检测CPU核心数，准备并发编译..."
+          echo "CPU核心数: $(nproc)"
+          echo ">>> 开始多核并发编译..."
+          if ! make -j$(nproc); then
+            echo "!!! 多核编译失败，尝试单核编译..."
+            if ! make -j1; then
+              echo "!!! 单核也失败，输出详细日志..."
+              make -j1 V=s
+              echo "!!! 编译彻底失败，终止流程。"
+              exit 1
+            fi
+          fi
+
+          echo ">>> 编译成功，写入输出变量"
+          echo "status=success" >> $GITHUB_OUTPUT
+          # 提取设备名
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          # 写入编译日期
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      # 13. 查看磁盘空间
+      - name: Check space usage
+        if: (!cancelled())
+        run: df -hT
+
+      # 14. 上传 bin 目录（可选）
+      - name: Upload bin directory
+        uses: actions/upload-artifact@v4
+        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        with:
+          name: OpenWrt_bin_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/bin
+
+      # 15. 整理固件文件，只保留最终固件
+      - name: Organize files
+        id: organize
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        run: |
+          cd openwrt/bin/targets/*/*
+          rm -rf packages
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      # 16. 上传固件目录
+      - name: Upload firmware directory
+        uses: actions/upload-artifact@v4
+        if: steps.organize.outputs.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt_firmware_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      # 17. 生成 Release 标签
+      - name: Generate release tag
+        id: tag
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        run: |
+          echo "release_tag=x86-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          touch release.txt
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      # 18. 上传固件到 GitHub Release
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2
+        if: steps.tag.outputs.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
+
+      # 19. 删除历史 workflow 运行记录，仅保留最近2次
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          retain_days: 0
+          keep_minimum_runs: 2
+
+      # 20. 删除旧的 Releases，只保留最新3次
+      - name: Remove old Releases
+        uses: dev-drprasad/delete-older-releases@v0.3.3
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        with:
+          keep_latest: 3
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
