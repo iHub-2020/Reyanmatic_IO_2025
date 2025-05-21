@@ -5,7 +5,7 @@
 # Website: https://www.reyanmatic.com
 #=================================================
 
-name: 00_OpenWrt_Builder_x86_64
+name: 01_Build_x86_64_P3TERX
 
 on:
   repository_dispatch:
