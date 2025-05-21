@@ -1,20 +1,20 @@
 #
 # https://github.com/P3TERX/Actions-OpenWrt
-# File: .github/workflows/update-checker.yml
-# Description: Source code update checker
+# File: .github/workflows/05_Update_Checker.yml
+# Desc: Source code update checker, trigger 01/02 main build workflow by event-type
 #
 
-name: 05_Update_Checker  # 工作流名称
+name: 05_Update_Checker
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede  # 要检测的主仓库地址
-  REPO_BRANCH: master                             # 要检测的分支
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
 
 on:
-  workflow_dispatch:  # 支持手动触发
-  # 如需定时检测可取消注释下面的 schedule，按需调整频率
-  # schedule:
-  #   - cron: 0 */18 * * *
+  workflow_dispatch:   # 手动触发
+  schedule:            # 定时任务
+    - cron:  '0 0 1 * *'    # 每月1号0点
+    - cron:  '0 0 2 * *'    # 每月2号0点
 
 jobs:
   check:
@@ -36,21 +36,44 @@ jobs:
           path: .commitHash
           key: HEAD-${{ steps.getHash.outputs.commitHash }}
 
-      # 3. 如果 commit hash 发生变化，则保存新的 commit hash 到 .commitHash
+      # 3. 保存新的 commit hash
       - name: Save New Commit Hash
         if: steps.cacheHash.outputs.cache-hit != 'true'
         run: |
           echo ${{ steps.getHash.outputs.commitHash }} | tee .commitHash
 
-      # 4. 如果 commit hash 变化，触发主固件编译 workflow
-      - name: Trigger build
-        if: steps.cacheHash.outputs.cache-hit != 'true'
+      # 4. 每月1号自动触发 01_Build_x86_64_P3TERX
+      - name: Trigger build 01 (每月1号)
+        if: github.event_name == 'schedule' && (github.event.schedule == '0 0 1 * *')
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
-          event-type: Source Code Update
+          event-type: Build_X86_64_P3TERX
 
-      # 5. 自动清理历史 workflow 运行记录，仅保留最近2次
+      # 5. 每月2号自动触发 02_Build_R2S_P3TERX
+      - name: Trigger build 02 (每月2号)
+        if: github.event_name == 'schedule' && (github.event.schedule == '0 0 2 * *')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+          event-type: Build_R2S_P3TERX
+
+      # 6. 其他情况（如手动或检测源码更新，按需触发01/02）
+      - name: Trigger build 01 (源码更新/手动)
+        if: github.event_name != 'schedule' && steps.cacheHash.outputs.cache-hit != 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+          event-type: Build_X86_64_P3TERX
+
+      - name: Trigger build 02 (源码更新/手动)
+        if: github.event_name != 'schedule' && steps.cacheHash.outputs.cache-hit != 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+          event-type: Build_R2S_P3TERX
+
+      # 7. 自动清理历史 workflow 运行记录，仅保留最近2次
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
