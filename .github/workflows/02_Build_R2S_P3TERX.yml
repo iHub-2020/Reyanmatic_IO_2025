@@ -200,13 +200,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
         with:
-          # token: ${{ secrets.GH_RELEASE_TOKEN }}            # ★ 改这里！使用自定义PAT
-          token: ${{ secrets.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 }}
+          token: ${{ secrets.GH_RELEASE_TOKEN }}            # ★ 改这里！使用自定义PAT
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
         # 保留原有注释，说明token已切换为PAT
-        # 注：GH_RELEASE_TOKEN 需在仓库Settings-Secrets中创建，权限至少为repo或contents:write
+        # 注1：token的生成：Personal profile->Setting->Developer Setting->Personal access tokens
+        # 注2：GH_RELEASE_TOKEN 需在仓库Settings-Secrets中创建，权限至少为repo或contents:write
       
       # 19. 删除历史 workflow 运行记录，仅保留最近2次
       - name: Delete workflow runs
@@ -224,5 +224,4 @@ jobs:
           keep_latest: 3
           delete_tags: true
         env:
-          # GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}      # ★ 这里建议也同步用PAT
-          GITHUB_TOKEN: ${{ secrets.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 }}
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}      # ★ 这里建议也同步用PAT
