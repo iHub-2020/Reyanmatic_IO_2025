@@ -3,7 +3,7 @@
 # Description : OpenWrt DIY script part 2 (After Update feeds) 仅适用于x86
 # Lisence     : MIT
 # Author      : Reyanmatic
-# Website     : https:www.reyanmatic.com 
+# Website     : https:www.reyanmatic.com
 #=========================================================================
 
 set -e  # 有错误立即退出
