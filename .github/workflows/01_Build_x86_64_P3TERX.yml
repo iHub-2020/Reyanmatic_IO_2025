@@ -9,6 +9,7 @@ name: 01_Build_x86_64_P3TERX
 
 on:
   repository_dispatch:
+    types: [Build_X86_64_P3TERX]
   workflow_dispatch:
 
 env:
