@@ -4,11 +4,11 @@
 # Description: Source code update checker
 #
 
-name: 04_Update_Checker  # 工作流名称
+name: 05_Update_Checker  # 工作流名称
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede  # 要检测的主仓库地址
-  REPO_BRANCH: master                            # 要检测的分支
+  REPO_BRANCH: master                             # 要检测的分支
 
 on:
   workflow_dispatch:  # 支持手动触发
@@ -25,16 +25,16 @@ jobs:
       - name: Get Commit Hash
         id: getHash
         run: |
-          git clone --depth 1 $REPO_URL -b $REPO_BRANCH .
+          git clone --depth=1 $REPO_URL -b $REPO_BRANCH .
           echo "commitHash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       # 2. 用 actions/cache 缓存本次 commit hash，便于对比变化
       - name: Compare Commit Hash
         id: cacheHash
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: .commitHash
-          key: commitHash_${{ steps.getHash.outputs.commitHash }}
+          key: HEAD-${{ steps.getHash.outputs.commitHash }}
 
       # 3. 如果 commit hash 发生变化，则保存新的 commit hash 到 .commitHash
       - name: Save New Commit Hash
@@ -45,9 +45,9 @@ jobs:
       # 4. 如果 commit hash 变化，触发主固件编译 workflow
       - name: Trigger build
         if: steps.cacheHash.outputs.cache-hit != 'true'
-        uses: peter-evans/repository-dispatch@v2
+        uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ github.token }}
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
           event-type: Source Code Update
 
       # 5. 自动清理历史 workflow 运行记录，仅保留最近2次
