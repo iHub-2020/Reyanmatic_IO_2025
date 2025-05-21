@@ -124,7 +124,7 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-# 12. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
+      # 12. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
       - name: Compile the firmware
         id: compile
         run: |
@@ -176,66 +176,67 @@ jobs:
 
       # 13. 查看磁盘空间
       - name: Check space usage
-        if: (!cancelled())
+        if: steps.compile.outputs.status == 'success'
         run: df -hT
-
+      
       # 14. 上传 bin 目录（可选）
       - name: Upload bin directory
         uses: actions/upload-artifact@v4
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        if: steps.compile.outputs.status == 'success'
         with:
           name: OpenWrt_bin_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
-
+      
       # 15. 整理固件文件，只保留最终固件
       - name: Organize files
         id: organize
-        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
-
+      
       # 16. 上传固件目录
       - name: Upload firmware directory
         uses: actions/upload-artifact@v4
-        if: steps.organize.outputs.status == 'success' && !cancelled()
+        if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
         with:
           name: OpenWrt_firmware_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
-
+      
       # 17. 生成 Release 标签
       - name: Generate release tag
         id: tag
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        if: steps.compile.outputs.status == 'success'
         run: |
           echo "release_tag=x86-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
           touch release.txt
           echo "status=success" >> $GITHUB_OUTPUT
-
+      
       # 18. 上传固件到 GitHub Release
       - name: Upload firmware to release
         uses: softprops/action-gh-release@v2
-        if: steps.tag.outputs.status == 'success' && !cancelled()
+        if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
-
+      
       # 19. 删除历史 workflow 运行记录，仅保留最近2次
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@v2
+        if: steps.compile.outputs.status == 'success'
         with:
           retain_days: 0
           keep_minimum_runs: 2
-
+      
       # 20. 删除旧的 Releases，只保留最新3次
       - name: Remove old Releases
         uses: dev-drprasad/delete-older-releases@v0.3.3
-        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        if: steps.compile.outputs.status == 'success'
         with:
           keep_latest: 3
           delete_tags: true
