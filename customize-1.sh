@@ -5,7 +5,7 @@
 # Author: eSirPlayground
 # Youtube Channel: https://goo.gl/fvkdwm 
 #=================================================
-echo "========== 开始执行 customize.sh =========="
+echo "========== 开始执行 customize-1.sh =========="
 
 set -e  # 遇到错误立即退出脚本
 # set -x  # 调试模式，显示每条命令
@@ -82,4 +82,4 @@ else
     echo "[WARN] 未找到 zzz-default-settings 文件，无法追加网络配置"
 fi
 
-echo "========== customize.sh 执行完成 =========="
+echo "========== customize-1.sh 执行完成 =========="
