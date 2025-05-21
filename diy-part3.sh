@@ -8,7 +8,7 @@
 set -e  # 有错误立即退出
 # set -x  # 显示每条命令（调试用，生产可去掉）
 
-echo "========== 开始执行 diy-part2.sh =========="
+echo "========== 开始执行 diy-part3.sh =========="
 
 # 1. 修改主页Logo
 cp -f $GITHUB_WORKSPACE/resources/logo_openwrt.png feeds/luci/themes/luci-theme-bootstrap/htdocs/luci-static/bootstrap/logo_openwrt.png
@@ -55,4 +55,4 @@ else
     echo "[WARN] 未找到 zzz-default-settings，无法追加网络配置"
 fi
 
-echo "========== diy-part2.sh 执行完成 =========="
+echo "========== diy-part3.sh 执行完成 =========="
