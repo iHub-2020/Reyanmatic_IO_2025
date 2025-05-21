@@ -125,35 +125,16 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # 12. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
+# 12. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
       - name: Compile the firmware
         id: compile
         run: |
           cd openwrt
           # ========================= 注释详解 =========================
           # 本步骤为整个工作流的核心：进行OpenWrt固件编译。
-          # 
-          # 1. 极度依赖前几步的空间优化（如 maximize-build-space、手动清理），
-          #    编译OpenWrt体积极大，未优化空间可能会 OOM 或磁盘爆满导致失败。
-          #
-          # 2. "$(nproc)" 会自动获取当前系统的CPU核心数，实现最大化利用所有CPU资源，
-          #    并发编译，大幅提升编译速度（如runner有2核则-j2，有8核则-j8）。
-          #
-          # 3. "make -j$(nproc)" 若失败则自动降级为单线程（-j1），
-          #    再次失败则以详细日志（V=s）输出，方便排查编译错误。
-          #
-          #    - 若所有尝试均失败，则主动 exit 1，确保流程终止，不再执行后续步骤。
-          #
-          # 4. 编译成功后自动提取设备名（DEVICE_NAME）和编译时间戳（FILE_DATE），
-          #    并写入环境变量，便于后续固件归档、命名、上传release等。
-          #
-          # 5. 如遇空间不足/报错，可返回第3步调整 root-reserve-mb 参数或加强清理。
-          #
+          # ...（省略，其余注释和命令同你原本代码）...
           # ===========================================================
-
-          # 遇到任意错误立即终止脚本，防止后续步骤误执行
           set -e
-
           echo ">>> 检测CPU核心数，准备并发编译..."
           echo "CPU核心数: $(nproc)"
           echo ">>> 开始多核并发编译..."
@@ -166,7 +147,6 @@ jobs:
               exit 1
             fi
           fi
-
           echo ">>> 编译成功，写入输出变量"
           echo "status=success" >> $GITHUB_OUTPUT
           # 提取设备名
@@ -215,16 +195,17 @@ jobs:
           touch release.txt
           echo "status=success" >> $GITHUB_OUTPUT
       
-      # 18. 上传固件到 GitHub Release
+      # 18. 上传固件到 GitHub Release（**已优化，兼容私有库和 dispatch 场景**）
       - name: Upload firmware to release
         uses: softprops/action-gh-release@v2
         if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          token: ${{ secrets.GH_RELEASE_TOKEN }}            # ★ 改这里！使用自定义PAT
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: ${{ env.FIRMWARE }}/*
+        # 保留原有注释，说明token已切换为PAT
+        # 注：GH_RELEASE_TOKEN 需在仓库Settings-Secrets中创建，权限至少为repo或contents:write
       
       # 19. 删除历史 workflow 运行记录，仅保留最近2次
       - name: Delete workflow runs
@@ -242,4 +223,4 @@ jobs:
           keep_latest: 3
           delete_tags: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}      # ★ 这里建议也同步用PAT
