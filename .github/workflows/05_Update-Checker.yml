@@ -1,8 +1,9 @@
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-# File: .github/workflows/05_Update_Checker.yml
-# Desc: Source code update checker, trigger 01/02 main build workflow by event-type
-#
+#=================================================
+# Description: Update-Checker using GitHub Actions
+# License: MIT
+# Author: Reyanmatic
+# Website: https://www.reyanmatic.com
+#=================================================
 
 name: 05_Update_Checker
 
