@@ -165,7 +165,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success'
         with:
-          name: OpenWrt_bin_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: OpenWrt_bin_xR2S${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
       
       # 15. 整理固件文件，只保留最终固件
@@ -183,7 +183,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
         with:
-          name: OpenWrt_firmware_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: OpenWrt_firmware_R2S${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: ${{ env.FIRMWARE }}
       
       # 17. 生成 Release 标签
@@ -191,7 +191,7 @@ jobs:
         id: tag
         if: steps.compile.outputs.status == 'success'
         run: |
-          echo "release_tag=x86-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          echo "release_tag=R2S-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
           touch release.txt
           echo "status=success" >> $GITHUB_OUTPUT
       
