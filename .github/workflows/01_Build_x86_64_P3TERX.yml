@@ -188,23 +188,26 @@ jobs:
           name: OpenWrt_bin_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
       
-      # 15. 整理固件文件，只保留最终固件
+      # 15. 整理固件文件，只保留 .qcow2 和 .vmdk 文件
       - name: Organize files
         id: organize
         if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
-          rm -rf packages
+          # 删除所有不是 .qcow2 和 .vmdk 的文件
+          find . -type f ! \( -name '*.qcow2' -o -name '*.vmdk' \) -delete
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
       
-      # 16. 上传固件目录
+      # 16. 上传固件目录（只包含 .qcow2 和 .vmdk 文件）
       - name: Upload firmware directory
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
         with:
           name: OpenWrt_firmware_x86${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: ${{ env.FIRMWARE }}
+          path: |
+            ${{ env.FIRMWARE }}/*.qcow2
+            ${{ env.FIRMWARE }}/*.vmdk
       
       # 17. 生成 Release 标签
       - name: Generate release tag
@@ -215,18 +218,17 @@ jobs:
           touch release.txt
           echo "status=success" >> $GITHUB_OUTPUT
       
-      # 18. 上传固件到 GitHub Release（**已优化，兼容私有库和 dispatch 场景**）
+      # 18. 上传固件到 GitHub Release（只上传 .qcow2 和 .vmdk 文件）
       - name: Upload firmware to release
         uses: softprops/action-gh-release@v2
         if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }}            # ★ 改这里！使用自定义PAT
+          token: ${{ secrets.GH_RELEASE_TOKEN }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
-        # 保留原有注释，说明token已切换为PAT
-        # 注1：token的生成：Personal profile->Setting->Developer Setting->Personal access tokens
-        # 注2：GH_RELEASE_TOKEN 需在仓库Settings-Secrets中创建，权限至少为repo或contents:write
+          files: |
+            ${{ env.FIRMWARE }}/*.qcow2
+            ${{ env.FIRMWARE }}/*.vmdk
       
       # 19. 删除历史 workflow 运行记录，仅保留最近2次
       - name: Delete workflow runs
@@ -244,4 +246,5 @@ jobs:
           keep_latest: 3
           delete_tags: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}      # ★ 这里建议也同步用PAT
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          
