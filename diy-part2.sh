@@ -59,10 +59,10 @@ sed -i "s/set network\.lan\.ipaddr='[^']*'/set network.lan.ipaddr='192.168.1.198
 grep -q "set network\.lan\.type='bridge'" $CFG_GEN || \
     sed -i "/set network\.lan\.proto='static'/a\    set network.lan.type='bridge'" $CFG_GEN
 
-echo "[INFO] 已通过 sed 覆盖 config_generate 的主机名、默认IP、网络参数"
-
 # 6.8 （可选）修改默认登录密码（建议安全环境下操作，hash需替换）
 # HASH='$1$yC8...$abcd....'  # 用 openssl passwd -1 '你的密码' 生成
 # sed -i "s@root:::0:99999:7:::@root:${HASH}:0:0:99999:7:::@g" package/base-files/files/etc/shadow
+
+echo "[INFO] 已通过 sed 覆盖 config_generate 的主机名、默认IP、网络参数"
 
 echo "========== diy-part2.sh 执行完成 =========="
