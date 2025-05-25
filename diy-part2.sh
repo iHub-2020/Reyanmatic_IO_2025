@@ -50,7 +50,7 @@ uci set network.wan6.proto='dhcp'
 uci set network.wan6.ifname='eth1'
 uci set network.lan.ipaddr='192.168.1.198'
 uci set network.lan.proto='static'
-uci set network.lan.type='bridge'
+# uci set network.lan.type='bridge'
 uci set network.lan.ifname='eth0'
 uci commit network
 
