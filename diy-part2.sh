@@ -33,36 +33,36 @@ echo "[INFO] 已修改主机名称为 Reyanmatic (zzz-default-settings)"
 cp -f $GITHUB_WORKSPACE/resources/banner package/base-files/files/etc/banner
 echo "[INFO] 已拷贝 banner"
 
-# 6. 修改默认网络参数到 config_generate
-CFG_GEN="package/base-files/files/bin/config_generate"
-echo "[INFO] 开始覆盖 config_generate 的默认网络参数与主机名等"
+# 6. 覆盖并批量写入自定义参数到 zzz-default-settings
+ZZZ="package/lean/default-settings/files/zzz-default-settings"
+echo "[INFO] 开始批量写入自定义系统/网络参数到 $ZZZ"
 
-# 6.1 修改主机名
-sed -i "s/hostname='OpenWrt'/hostname='Reyanmatic'/g" $CFG_GEN
+cat >> $ZZZ <<-'EOF'
+# ---------- 自定义主机名/时区 ----------
+uci set system.@system[0].hostname='Reyanmatic'
+# uci set system.@system[0].timezone='CST-8'
+# uci set system.@system[0].zonename='Asia/Shanghai'
+uci commit system
 
-# 6.2 修改WAN口协议
-sed -i "s/set network\.wan\.proto='dhcp'/set network.wan.proto='pppoe'/g" $CFG_GEN
+# ---------- 自定义网络参数 ----------
+uci set network.wan.proto='pppoe'
+uci set network.wan.username=''
+uci set network.wan.password=''
+uci set network.wan.ifname='eth1'
 
-# 6.3 修改WAN物理口
-sed -i "s/set network\.wan\.ifname='[^']*'/set network.wan.ifname='eth1'/g" $CFG_GEN
+uci set network.wan6.proto='dhcp'
+uci set network.wan6.ifname='eth1'
 
-# 6.4 修改LAN协议
-sed -i "s/set network\.lan\.proto='[^']*'/set network.lan.proto='static'/g" $CFG_GEN
+uci set network.lan.ipaddr='192.168.1.198'
+uci set network.lan.proto='static'
+uci set network.lan.type='bridge'
+uci set network.lan.ifname='eth0'
+uci commit network
 
-# 6.5 修改LAN物理接口
-sed -i "s/set network\.lan\.ifname='[^']*'/set network.lan.ifname='eth0'/g" $CFG_GEN
+# ---------- 如需改默认密码请在此插入（hash需自行生成） ----------
+# sed -i 's@^root:[^:]*:@root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.:@g' /etc/shadow
 
-# 6.6 修改LAN口 static IP（默认管理IP）
-sed -i "s/set network\.lan\.ipaddr='[^']*'/set network.lan.ipaddr='192.168.1.198'/g" $CFG_GEN
+EOF
 
-# 6.7 修改LAN类型为bridge（如无则追加）
-grep -q "set network\.lan\.type='bridge'" $CFG_GEN || \
-    sed -i "/set network\.lan\.proto='static'/a\    set network.lan.type='bridge'" $CFG_GEN
-
-# 6.8 （可选）修改默认登录密码（建议安全环境下操作，hash需替换）
-# HASH='$1$yC8...$abcd....'  # 用 openssl passwd -1 '你的密码' 生成
-# sed -i "s@root:::0:99999:7:::@root:${HASH}:0:0:99999:7:::@g" package/base-files/files/etc/shadow
-
-echo "[INFO] 已通过 sed 覆盖 config_generate 的主机名、默认IP、网络参数"
-
+echo "[INFO] 已批量写入自定义系统和网络参数到 $ZZZ"
 echo "========== diy-part2.sh 执行完成 =========="
