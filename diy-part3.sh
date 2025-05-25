@@ -33,27 +33,38 @@ echo "[INFO] 已修改主机名称为 Reyanmatic"
 cp -f $GITHUB_WORKSPACE/resources/banner package/base-files/files/etc/banner
 echo "[INFO] 已拷贝 banner"
 
-# 6. 追加/覆盖 R2S 专用网络配置到 zzz-default-settings（避免重复）
-ZZZ_BASE="package/lean/default-settings/files/zzz-default-settings"
-if [ -f "$ZZZ_BASE" ]; then
-    cat >> "$ZZZ_BASE" <<'EOF'
+# 6. 覆盖并批量写入自定义参数到 zzz-default-settings
+ZZZ="package/lean/default-settings/files/zzz-default-settings"
 
-# ===== Reyanmatic R2S Default Network Settings =====
+# 删除所有 exit 0，避免后面内容被截断
+sed -i '/exit 0/d' $ZZZ
+
+# 追加自定义配置
+cat >> $ZZZ <<-'EOF'
+# ---------- 自定义主机名 ------------
+uci set system.@system[0].hostname='Reyanmatic'
+uci commit system
+
+# ---------- 自定义网络参数 ----------
 uci set network.wan.proto='pppoe'
 uci set network.wan.username=''
 uci set network.wan.password=''
 uci set network.wan.ifname='eth0'
-uci set network.wan6.proto='DHCP'
+uci set network.wan6.proto='dhcp'
 uci set network.wan6.ifname='eth0'
 uci set network.lan.ipaddr='192.168.1.198'
 uci set network.lan.proto='static'
 uci set network.lan.type='bridge'
 uci set network.lan.ifname='eth1'
 uci commit network
-EOF
-    echo "[INFO] 已追加R2S默认网络配置到 zzz-default-settings"
-else
-    echo "[WARN] 未找到 zzz-default-settings，无法追加网络配置"
-fi
 
+# ---------- 如需改默认密码请在此插入（hash需自行生成） ----------
+# sed -i 's@^root:[^:]*:@root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.:@g' /etc/shadow
+
+EOF
+
+# 末尾补上 exit 0，保证脚本规范
+echo "exit 0" >> $ZZZ
+
+echo "[INFO] 已批量写入自定义系统和网络参数到 $ZZZ"
 echo "========== diy-part3.sh 执行完成 =========="
