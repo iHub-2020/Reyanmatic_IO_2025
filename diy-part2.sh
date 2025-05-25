@@ -35,13 +35,14 @@ echo "[INFO] 已拷贝 banner"
 
 # 6. 覆盖并批量写入自定义参数到 zzz-default-settings
 ZZZ="package/lean/default-settings/files/zzz-default-settings"
-echo "[INFO] 开始批量写入自定义系统/网络参数到 $ZZZ"
 
+# 删除所有 exit 0，避免后面内容被截断
+sed -i '/exit 0/d' $ZZZ
+
+# 追加自定义配置
 cat >> $ZZZ <<-'EOF'
-# ---------- 自定义主机名/时区 ----------
+# ---------- 自定义主机名 ------------
 uci set system.@system[0].hostname='Reyanmatic'
-# uci set system.@system[0].timezone='CST-8'
-# uci set system.@system[0].zonename='Asia/Shanghai'
 uci commit system
 
 # ---------- 自定义网络参数 ----------
@@ -49,10 +50,8 @@ uci set network.wan.proto='pppoe'
 uci set network.wan.username=''
 uci set network.wan.password=''
 uci set network.wan.ifname='eth1'
-
 uci set network.wan6.proto='dhcp'
 uci set network.wan6.ifname='eth1'
-
 uci set network.lan.ipaddr='192.168.1.198'
 uci set network.lan.proto='static'
 uci set network.lan.type='bridge'
@@ -63,6 +62,9 @@ uci commit network
 # sed -i 's@^root:[^:]*:@root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.:@g' /etc/shadow
 
 EOF
+
+# 末尾补上 exit 0，保证脚本规范
+echo "exit 0" >> $ZZZ
 
 echo "[INFO] 已批量写入自定义系统和网络参数到 $ZZZ"
 echo "========== diy-part2.sh 执行完成 =========="
