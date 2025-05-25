@@ -25,15 +25,11 @@ echo "[INFO] 已拷贝 header.ut"
 cp -f $GITHUB_WORKSPACE/resources/footer.ut feeds/luci/themes/luci-theme-bootstrap/ucode/template/themes/bootstrap/footer.ut
 echo "[INFO] 已拷贝 footer.ut"
 
-# 4. 修改主机名称（旧逻辑，兼容性保留）
-sed -i "s/hostname='.*'/hostname='Reyanmatic'/g" package/lean/default-settings/files/zzz-default-settings 2>/dev/null || true
-echo "[INFO] 已修改主机名称为 Reyanmatic (zzz-default-settings)"
-
-# 5. 修改SSH登录页面logo（banner）
+# 4. 修改SSH登录页面logo（banner）
 cp -f $GITHUB_WORKSPACE/resources/banner package/base-files/files/etc/banner
 echo "[INFO] 已拷贝 banner"
 
-# 6. 覆盖并批量写入自定义参数到 zzz-default-settings
+# 5. 覆盖并批量写入自定义参数到 zzz-default-settings
 ZZZ="package/lean/default-settings/files/zzz-default-settings"
 
 # 删除所有 exit 0，避免后面内容被截断
