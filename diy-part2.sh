@@ -83,50 +83,56 @@ ZZZ_DEFAULT_SETTINGS_PATH="package/lean/default-settings/files/zzz-default-setti
 
 if [ -f "$ZZZ_DEFAULT_SETTINGS_PATH" ]; then
   # 删除文件中所有独立的 'exit 0' 行，为追加自定义设置做准备。
-  # 使用更精确的正则表达式匹配行首到行尾的 'exit 0'，允许前后有空格。
   sed -i '/^[[:space:]]*exit 0[[:space:]]*$/d' "$ZZZ_DEFAULT_SETTINGS_PATH"
   echo "[INFO] 已从 $ZZZ_DEFAULT_SETTINGS_PATH 移除原有的 'exit 0' 行。"
 
   # 追加自定义配置到 zzz-default-settings
-  # 使用 cat 和 here document (<<-'EOF') 来追加多行文本。
-  # '-' 使 here document 中的前导制表符被忽略，方便排版。
+  # 使用 <<-'EOF' 可以保留缩进，并且 EOF 前的单引号会阻止所有变量扩展和命令替换
+  # 这意味着 $variable 会被原样写入文件，在 zzz-default-settings 执行时再由其shell解释
   cat >> "$ZZZ_DEFAULT_SETTINGS_PATH" <<-'EOF'
 
-# ==> 自定义设置开始 (由 diy-part2.sh 添加) <==
+# ==> x86自定义设置开始 (由 diy-part2.sh 添加) <==
 
-# ---------- x86自定义主机名和登录密码 ------------
+# ---------- x86自定义主机名 ----------
 uci set system.@system[0].hostname='Reyanmatic'
-root_password_hash='$1$PrH5T/M2$bJ/LEDMMUQ0vj4vhg7jeC.'   # 替换为您的密码hash
-uci set system.@system[0].password="$root_password_hash"
+# 主机名设置后，可以单独commit，或与其他uci更改一起在末尾commit
+# 为确保主机名更改生效，我们在这里提交 system 表的更改。
 uci commit system
 
-# ---------------- 自定义网络参数 ---------------
+# ---------- x86自定义登录密码 (通过直接修改 /etc/shadow) ----------
+# 下面这行会在 zzz-default-settings 脚本执行时定义一个名为 root_password_hash 的shell变量
+root_password_hash='$1$PrH5T/M2$bJ/LEDMMUQ0vj4vhg7jeC.' # 替换为您的密码hash
+
+# 检查 /etc/shadow 文件是否存在
+if [ -f /etc/shadow ]; then
+  # 当 zzz-default-settings 脚本执行时，下面的 sed 命令会运行。
+  # sed 命令中的双引号允许 $root_password_hash 变量被展开（使用的是在 zzz-default-settings 中定义的那个变量）。
+  # 使用 @ 作为 sed 的分隔符，以避免密码哈希中可能存在的 / 字符造成冲突。
+  # 此命令会查找以 "root:" 开头的行，并将其第二个冒号分隔的字段（即密码哈希）替换为新的哈希。
+  sed -i "s@^root:[^:]*:@root:$root_password_hash:@g" /etc/shadow
+  echo "[INFO zzz-default-settings] Root password in /etc/shadow has been updated via sed."
+else
+  echo "[WARN zzz-default-settings] /etc/shadow not found. Cannot set root password via sed."
+fi
+# 注意：通过 sed 修改 /etc/shadow 后，不需要再为密码执行 uci commit system。
+
+# ---------- 自定义网络参数 ----------
 # WAN 设置为 PPPoE (请根据实际情况填写用户名和密码)
 uci set network.wan.proto='pppoe'
-uci set network.wan.username=''                           # 示例: 您的PPPoE用户名
-uci set network.wan.password=''                           # 示例: 您的PPPoE密码
-uci set network.wan.ifname='eth1'                         # WAN口网卡，x86通常是eth0或eth1, 根据实际调整
+uci set network.wan.username='' # 示例: 您的PPPoE用户名
+uci set network.wan.password='' # 示例: 您的PPPoE密码
+uci set network.wan.ifname='eth1' # WAN口网卡, x86通常是eth0或eth1, 根据实际调整 (eth1常用于旁路由WAN)
 
-# WAN6 设置为 DHCPv6
-uci set network.wan6.proto='dhcpv6'                       # 通常为 dhcpv6
-uci set network.wan6.ifname='@wan'                        # 通常关联到wan接口
+# WAN6 设置为 DHCPv6 (通常基于WAN口)
+uci set network.wan6.proto='dhcpv6' # 通常是 dhcpv6
+uci set network.wan6.ifname='@wan'  # 关联到WAN接口 (eth1)
 
 # LAN 设置
-uci set network.lan.ipaddr='192.168.1.198'
+uci set network.lan.ipaddr='192.168.1.198' # 自定义LAN IP
 uci set network.lan.proto='static'
-# uci set network.lan.type='bridge'                       # 如果LAN是桥接多个接口，取消此行注释
-uci set network.lan.ifname='eth0'                         # LAN口网卡, 根据实际调整
-uci commit network
-
-# ---------- 如需改默认密码请在此插入（hash需自行生成） ----------
-# 注意: 直接修改 /etc/shadow 文件更为可靠，但这通常在固件首次启动脚本中完成，
-# 或者通过预置 files/etc/shadow 文件。
-# 在 zzz-default-settings 中修改密码相对复杂且不一定总能按预期工作。
-# 推荐方法是预置 /etc/config/system 中的登录密码hash，或通过 files 机制覆盖 /etc/shadow。
-# 例如 (生成密码hash的命令: openssl passwd -1 'your_password'):
-# root_password_hash='$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.' # 替换为您的密码hash
-# uci set system.@system[0].password="$root_password_hash"
-# uci commit system
+# uci set network.lan.type='bridge' # 如果LAN是桥接多个接口（如物理网口+WiFi），取消此行注释
+uci set network.lan.ifname='eth0' # LAN口网卡, 根据实际调整 (eth0常用于旁路由LAN)
+uci commit network # 提交网络相关的uci更改
 
 # ==> x86自定义设置结束 <==
 EOF
