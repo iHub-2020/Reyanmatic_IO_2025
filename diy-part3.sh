@@ -94,7 +94,8 @@ uci commit system
 
 # ---------- R2S自定义登录密码 (通过直接修改 /etc/shadow) ----------
 # 下面这行会在 zzz-default-settings 脚本执行时定义一个名为 root_password_hash 的shell变量
-root_password_hash='$1$PrH5T/M2$bJ/LEDMMUQ0vj4vhg7jeC.' # 替换为您的密码hash
+# 生成密码hash的命令: openssl passwd -1 'your_password'
+root_password_hash='$1$TyTMQln5$cgHCPhiHmSTtSpSzZDRZ3/'   # 替换为您的密码hash
 
 # 检查 /etc/shadow 文件是否存在
 if [ -f /etc/shadow ]; then
