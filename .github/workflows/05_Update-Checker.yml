@@ -125,6 +125,6 @@ jobs:
           token: ${{ secrets.GH_RELEASE_TOKEN }}
           repository: ${{ github.repository }}
           retain_days: 0
-          keep_minimum_runs: 5 # 保留此检查器工作流的最近5次运行
+          keep_minimum_runs: 3 # 保留此检查器工作流的最近3次运行
           # 使用 delete_workflow_pattern 来指定仅删除此工作流 (05_Update-Checker.yml) 的运行记录
           delete_workflow_pattern: "05_Update-Checker.yml"
