@@ -101,7 +101,8 @@ uci commit system
 
 # ---------- x86自定义登录密码 (通过直接修改 /etc/shadow) ----------
 # 下面这行会在 zzz-default-settings 脚本执行时定义一个名为 root_password_hash 的shell变量
-root_password_hash='$1$PrH5T/M2$bJ/LEDMMUQ0vj4vhg7jeC.' # 替换为您的密码hash
+# 生成密码hash的命令: openssl passwd -1 'your_password'
+root_password_hash='$1$TyTMQln5$cgHCPhiHmSTtSpSzZDRZ3/'   # 替换为您的密码hash
 
 # 检查 /etc/shadow 文件是否存在
 if [ -f /etc/shadow ]; then
@@ -119,20 +120,20 @@ fi
 # ---------- 自定义网络参数 ----------
 # WAN 设置为 PPPoE (请根据实际情况填写用户名和密码)
 uci set network.wan.proto='pppoe'
-uci set network.wan.username='' # 示例: 您的PPPoE用户名
-uci set network.wan.password='' # 示例: 您的PPPoE密码
-uci set network.wan.ifname='eth1' # WAN口网卡, x86通常是eth0或eth1, 根据实际调整 (eth1常用于旁路由WAN)
+uci set network.wan.username=''                           # 示例: 您的PPPoE用户名
+uci set network.wan.password=''                           # 示例: 您的PPPoE密码
+uci set network.wan.ifname='eth1'                         # WAN口网卡, x86通常是eth0或eth1, 根据实际调整 (eth1常用于旁路由WAN)
 
 # WAN6 设置为 DHCPv6 (通常基于WAN口)
-uci set network.wan6.proto='dhcpv6' # 通常是 dhcpv6
-uci set network.wan6.ifname='@wan'  # 关联到WAN接口 (eth1)
+uci set network.wan6.proto='dhcpv6'                       # 通常是 dhcpv6
+uci set network.wan6.ifname='@wan'                        # 关联到WAN接口 (eth1)
 
 # LAN 设置
-uci set network.lan.ipaddr='192.168.1.198' # 自定义LAN IP
+uci set network.lan.ipaddr='192.168.1.198'                # 自定义LAN IP
 uci set network.lan.proto='static'
-# uci set network.lan.type='bridge' # 如果LAN是桥接多个接口（如物理网口+WiFi），取消此行注释
-uci set network.lan.ifname='eth0' # LAN口网卡, 根据实际调整 (eth0常用于旁路由LAN)
-uci commit network # 提交网络相关的uci更改
+# uci set network.lan.type='bridge'                       # 如果LAN是桥接多个接口（如物理网口+WiFi），取消此行注释
+uci set network.lan.ifname='eth0'                         # LAN口网卡, 根据实际调整 (eth0常用于旁路由LAN)
+uci commit network                                        # 提交网络相关的uci更改
 
 # ==> x86自定义设置结束 <==
 EOF
