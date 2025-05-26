@@ -1,5 +1,6 @@
 #=================================================
-# Description: Update-Checker using GitHub Actions
+# Description: Update-Checker for coolsnowwolf/lede.
+#              Triggers Multi-Platform Build based on defined schedule and updates.
 # License: MIT
 # Author: Reyanmatic
 # Website: https://www.reyanmatic.com
@@ -8,75 +9,131 @@
 name: 05_Update_Checker
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
-  REPO_BRANCH: master
+  REPO_URL: https://github.com/coolsnowwolf/lede # 上游源码仓库 URL
+  REPO_BRANCH: master # 上游源码仓库分支
+  TARGET_EVENT_TYPE: Build_OpenWrt_Matrix # 目标工作流的 repository_dispatch event type
 
 on:
-  workflow_dispatch:   # 手动触发
-  schedule:            # 定时任务
-    - cron:  '0 0 1 * *'    # 每月1号0点自动触发 01_Build_x86_64_P3TERX.yml
-    - cron:  '0 0 2 * *'    # 每月2号0点自动触发 02_Build_R2S_P3TERX.yml
+  workflow_dispatch:   # 允许手动触发此检查器
+  schedule:
+    # CRON 表达式使用 UTC 时间
+    # 每周五 00:00 UTC (用于"每两周"的逻辑判断 - 选择奇数周的周五执行检查)
+    - cron: '0 0 * * 5'
+    # 每月最后一天 00:00 UTC (用于月底强制触发构建)
+    - cron: '0 0 L * *'
 
 jobs:
-  check:
+  check_and_trigger_build: # Job 名称更清晰
     runs-on: ubuntu-latest
+    outputs:
+      triggered_build: ${{ steps.dispatch.outputs.triggered || 'false' }} # 输出是否触发了构建
+      trigger_reason: ${{ steps.trigger_logic.outputs.reason }}
+      checked_commit_hash: ${{ steps.getHash.outputs.commitHash || 'N/A (check not performed)' }}
 
     steps:
-      # 1. 拉取源码并获取最新 commit hash
-      - name: Get Commit Hash
-        id: getHash
+      # 1. 判断当前触发类型和条件，决定后续操作
+      - name: Determine Trigger Logic and Conditions
+        id: trigger_logic
         run: |
-          git clone --depth=1 $REPO_URL -b $REPO_BRANCH .
-          echo "commitHash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          TRIGGER_REASON="N/A"
+          SHOULD_CHECK_UPSTREAM=false # 是否需要检查上游 commit (git clone, cache)
+          # SHOULD_FORCE_BUILD=false    # 这个变量在此版本中不再直接用于 dispatch 条件，而是通过 reason 来判断
 
-      # 2. 用 actions/cache 缓存本次 commit hash，便于对比变化
-      - name: Compare Commit Hash
+          echo "Current event: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TRIGGER_REASON="Manual Trigger"
+            SHOULD_CHECK_UPSTREAM=true # 手动触发时，检查最新代码状态
+            echo "==> Logic: Manual dispatch. Will check upstream and then trigger build."
+
+          elif [ "${{ github.event_name }}" == "schedule" ]; then
+            SCHEDULED_CRON="${{ github.event.schedule }}"
+            echo "==> Logic: Scheduled dispatch via cron: $SCHEDULED_CRON"
+
+            if [ "$SCHEDULED_CRON" == "0 0 * * 5" ]; then # 每周五
+              # 判断是否为 "目标" 的双周周五 (例如：奇数周的周五)
+              # %V 输出 ISO 周号 (01-53)
+              WEEK_NUM=$(date -u +%V)
+              if [ $((WEEK_NUM % 2)) -ne 0 ]; then # 如果是奇数周
+                TRIGGER_REASON="Bi-weekly Check (Odd Week Friday) - Pending Upstream Update"
+                SHOULD_CHECK_UPSTREAM=true
+                echo "==> Logic: Target Friday (Odd Week #$WEEK_NUM) for bi-weekly check. Will check upstream."
+              else
+                TRIGGER_REASON="Bi-weekly Check (Even Week Friday) - Skipped"
+                echo "==> Logic: Not a target Friday (Even Week #$WEEK_NUM) for bi-weekly check. No action for upstream check."
+              fi
+            elif [ "$SCHEDULED_CRON" == "0 0 L * *" ]; then # 每月最后一天
+              TRIGGER_REASON="End of Month Force Trigger"
+              SHOULD_CHECK_UPSTREAM=false # 月底强制构建，无需检查上游更新状态
+              echo "==> Logic: End of month. Will force build without upstream check."
+            fi
+          fi
+
+          echo "reason=$TRIGGER_REASON" >> $GITHUB_OUTPUT
+          echo "should_check_upstream=$SHOULD_CHECK_UPSTREAM" >> $GITHUB_OUTPUT
+          # echo "should_force_build=$SHOULD_FORCE_BUILD" >> $GITHUB_OUTPUT # 不再需要此输出给后续步骤
+
+      # 2. 拉取上游源码并获取最新的 commit hash (如果需要检查上游)
+      - name: Get Latest Commit Hash from Upstream
+        id: getHash
+        if: steps.trigger_logic.outputs.should_check_upstream == 'true'
+        run: |
+          echo "Cloning $REPO_URL branch $REPO_BRANCH..."
+          git clone --depth=1 $REPO_URL -b $REPO_BRANCH upstream_repo
+          cd upstream_repo
+          CURRENT_HASH=$(git rev-parse HEAD)
+          echo "Latest commit hash from upstream: $CURRENT_HASH"
+          echo "commitHash=$CURRENT_HASH" >> $GITHUB_OUTPUT
+          cd ..
+          rm -rf upstream_repo # 清理克隆的目录
+
+      # 3. 使用 actions/cache 缓存 commit hash，用于对比变化 (如果需要检查上游)
+      - name: Compare with Cached Commit Hash
         id: cacheHash
+        if: steps.trigger_logic.outputs.should_check_upstream == 'true'
         uses: actions/cache@v4
         with:
-          path: .commitHash
-          key: HEAD-${{ steps.getHash.outputs.commitHash }}
+          path: .commitHash_coolsnowwolf_lede # 缓存文件的路径
+          key: upstream-coolsnowwolf-lede-HEAD-${{ steps.getHash.outputs.commitHash }}
 
-      # 3. 保存新的 commit hash
-      - name: Save New Commit Hash
-        if: steps.cacheHash.outputs.cache-hit != 'true'
+      # 4. 如果检测到更新 (cache miss)，则保存新的 commit hash 到缓存文件 (如果需要检查上游)
+      - name: Save New Commit Hash if Update Detected
+        if: steps.trigger_logic.outputs.should_check_upstream == 'true' && steps.cacheHash.outputs.cache-hit != 'true'
         run: |
-          echo ${{ steps.getHash.outputs.commitHash }} | tee .commitHash
+          echo "Upstream update detected (or first run). Saving new hash ${{ steps.getHash.outputs.commitHash }} for caching."
+          echo "${{ steps.getHash.outputs.commitHash }}" > .commitHash_coolsnowwolf_lede
 
-      # 4. 每月1号自动触发 01_Build_x86_64_P3TERX
-      - name: Trigger build 01 (每月1号)
-        if: github.event_name == 'schedule' && (github.event.schedule == '0 0 1 * *')
+      # 5. 根据逻辑判断是否触发构建，并执行 repository dispatch
+      - name: Decide and Trigger Multi-Platform Build Workflow
+        id: dispatch
+        # 条件判断：
+        # 1. 手动触发 (reason == 'Manual Trigger')
+        # 2. 或，是目标双周周五 并且 上游有更新 (reason 包含 'Bi-weekly Check' 且 cache-hit != 'true')
+        # 3. 或，是月底强制触发 (reason == 'End of Month Force Trigger')
+        if: |
+          (steps.trigger_logic.outputs.reason == 'Manual Trigger') ||
+          (contains(steps.trigger_logic.outputs.reason, 'Bi-weekly Check (Odd Week Friday)') && steps.cacheHash.outputs.cache-hit != 'true') ||
+          (steps.trigger_logic.outputs.reason == 'End of Month Force Trigger')
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
-          event-type: Build_X86_64_P3TERX
+          token: ${{ secrets.ACTIONS_TRIGGER_PAT }} # 需要有 repo 权限的 PAT 来触发其他工作流
+          repository: ${{ github.repository }}
+          event-type: ${{ env.TARGET_EVENT_TYPE }}
+          client-payload: > # 使用多行字符串传递更丰富的 payload
+            {
+              "trigger_reason": "${{ steps.trigger_logic.outputs.reason }}",
+              "upstream_commit_hash": "${{ steps.getHash.outputs.commitHash || 'N/A (check not performed)' }}",
+              "cache_hit_on_check": "${{ steps.cacheHash.outputs.cache-hit || 'N/A (check not performed or cache failed)' }}"
+            }
 
-      # 5. 每月2号自动触发 02_Build_R2S_P3TERX
-      - name: Trigger build 02 (每月2号)
-        if: github.event_name == 'schedule' && (github.event.schedule == '0 0 2 * *')
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
-          event-type: Build_R2S_P3TERX
-
-      # 6. 其他情况（如手动或检测源码更新，按需触发01/02）
-      - name: Trigger build 01 (源码更新/手动)
-        if: github.event_name != 'schedule' && steps.cacheHash.outputs.cache-hit != 'true'
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
-          event-type: Build_X86_64_P3TERX
-
-      - name: Trigger build 02 (源码更新/手动)
-        if: github.event_name != 'schedule' && steps.cacheHash.outputs.cache-hit != 'true'
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
-          event-type: Build_R2S_P3TERX
-
-      # 7. 自动清理历史 workflow 运行记录，仅保留最近2次
-      - name: Delete workflow runs
+      # 6. 自动清理此 Update-Checker 工作流的历史运行记录
+      - name: Delete old workflow runs for this checker
+        if: always() # 总是执行，无论是否触发了构建，以保持运行记录的整洁
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          retain_days: 0
-          keep_minimum_runs: 2
+          # 修改点：参照 00_Build...yml 的格式，使用 GH_RELEASE_TOKEN
+          token: ${{ secrets.GH_RELEASE_TOKEN }} # 确保这个 secret 被正确设置，并具有删除 workflow runs 的权限
+          repository: ${{ github.repository }}
+          retain_days: 0 # 不按天数保留
+          keep_minimum_runs: 5 # 保留此检查器工作流的最近5次运行（可以调整）
+          workflow_id: ${{ github.workflow_id }} # 删除当前工作流的运行记录
+          
