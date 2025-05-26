@@ -94,13 +94,13 @@ if [ -f "$ZZZ_DEFAULT_SETTINGS_PATH" ]; then
 
 # ==> 自定义设置开始 (由 diy-part2.sh 添加) <==
 
-# ---------- 自定义主机名和登录密码 ------------
+# ---------- x86自定义主机名和登录密码 ------------
 uci set system.@system[0].hostname='Reyanmatic'
 root_password_hash='$1$PrH5T/M2$bJ/LEDMMUQ0vj4vhg7jeC.'   # 替换为您的密码hash
 uci set system.@system[0].password="$root_password_hash"
 uci commit system
 
-# ---------- 自定义网络参数 ----------
+# ---------------- 自定义网络参数 ---------------
 # WAN 设置为 PPPoE (请根据实际情况填写用户名和密码)
 uci set network.wan.proto='pppoe'
 uci set network.wan.username=''                           # 示例: 您的PPPoE用户名
@@ -128,7 +128,7 @@ uci commit network
 # uci set system.@system[0].password="$root_password_hash"
 # uci commit system
 
-# ==> 自定义设置结束 <==
+# ==> x86自定义设置结束 <==
 EOF
 
   # 在文件末尾确保有一个 'exit 0'，保证脚本执行的规范性。
