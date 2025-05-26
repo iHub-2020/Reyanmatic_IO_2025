@@ -1,0 +1,249 @@
+#=================================================
+# Description: Build Multi-Platform OpenWrt using GitHub Actions (Matrix)
+# License: MIT
+# Author: Reyanmatic
+# Website: https://www.reyanmatic.com
+#=================================================
+
+name: Build_OpenWrt_Matrix
+
+on:
+  repository_dispatch:
+    types: [Build_OpenWrt_Matrix]
+  workflow_dispatch:
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # 矩阵定义支持多个平台，未来可继续扩展
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: x86_64
+            config: x86_64.config
+            diy_part: diy-part2.sh
+            tag_prefix: x86
+          - name: R2S
+            config: R2S.config
+            diy_part: diy-part3.sh
+            tag_prefix: R2S
+          # - name: R4S
+          #   config: R4S.config
+          #   diy_part: diy-part4.sh
+          #   tag_prefix: R4S
+
+    steps:
+      # 1. 编译前空间检查
+      - name: Before freeing up disk space
+        run: |
+          echo "Before freeing up disk space"
+          echo "=============================================================================="
+          df -hT
+          echo "=============================================================================="
+
+      # 2. maximize-build-space：LVM重新挂载build空间，突破14G限制，并清理指定大目录
+      - name: Freeing up disk space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 4096
+          swap-size-mb: 1
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+
+      # 3. 空间释放后的检查
+      - name: Free up disk space complete
+        run: |
+          echo "Free up disk space complete"
+          echo "=============================================================================="
+          df -hT
+          echo "=============================================================================="
+
+      # 4. 拉取仓库
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 5. 初始化环境，安装依赖（只做一次）
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -qq update
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+          genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
+          libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
+          libreadline-dev libssl-dev libtool llvm lrzsz msmtp ninja-build p7zip p7zip-full patch pkgconf \
+          python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
+
+      # 6. 克隆主源码仓库
+      - name: Clone source code
+        run: |
+          df -hT $PWD
+          git clone ${REPO_URL} -b ${REPO_BRANCH} openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+      # 7. 加载自定义feeds（只做一次，全局适用）
+      - name: Load custom feeds
+        run: |
+          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+          chmod +x diy-part1.sh
+          cd openwrt
+          $GITHUB_WORKSPACE/diy-part1.sh
+
+      # 8. 更新 feeds
+      - name: Update feeds
+        run: cd openwrt && ./scripts/feeds update -a
+
+      # 9. 安装 feeds
+      - name: Install feeds
+        run: cd openwrt && ./scripts/feeds install -a
+
+      # 10. 针对每个平台单独编译（以下步骤进入矩阵并行，每个平台环境彼此隔离）
+
+      # 10-1. 配置定制化与深度自定义（务必在 make defconfig 前执行）
+      - name: Configuration & Customization (核心步骤)
+        run: |
+          # 清理前一平台残留
+          rm -rf openwrt/files
+          # 拷贝 files 目录（如有）
+          [ -e files ] && cp -rf files openwrt/files
+          # 拷贝对应平台 config
+          cp ${{ matrix.target.config }} openwrt/.config
+          # 执行对应平台的自定义脚本
+          chmod +x ${{ matrix.target.diy_part }}
+          cd openwrt
+          $GITHUB_WORKSPACE/${{ matrix.target.diy_part }}
+
+      # 10-2. 补全配置并下载dl依赖包
+      - name: Make defconfig & Download packages
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      # 10-3. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
+      - name: Compile the firmware
+        id: compile
+        run: |
+          cd openwrt
+          set -e
+          echo ">>> 检测CPU核心数，准备并发编译..."
+          echo "CPU核心数: $(nproc)"
+          echo ">>> 开始多核并发编译..."
+          if ! make -j$(nproc); then
+            echo "!!! 多核编译失败，尝试单核编译..."
+            if ! make -j1; then
+              echo "!!! 单核也失败，输出详细日志..."
+              make -j1 V=s
+              echo "!!! 编译彻底失败，终止流程。"
+              exit 1
+            fi
+          fi
+          echo ">>> 编译成功，写入输出变量"
+          echo "status=success" >> $GITHUB_OUTPUT
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      # 10-4. 查看磁盘空间（调试用）
+      - name: Check space usage
+        if: steps.compile.outputs.status == 'success'
+        run: df -hT
+
+      # 10-5. 上传 bin 目录（可选，调试/归档用）
+      - name: Upload bin directory
+        uses: actions/upload-artifact@v4
+        if: steps.compile.outputs.status == 'success'
+        with:
+          name: OpenWrt_bin_${{ matrix.target.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: openwrt/bin
+
+      # 10-6. 整理固件文件（平台定制：可按需扩展）
+      - name: Organize files
+        id: organize
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          cd openwrt/bin/targets/*/*
+          # 如果需要只保留特定格式固件可定制如下（以x86为例）
+          case "${{ matrix.target.name }}" in
+            x86_64)
+              find . -type f ! \( -name '*.qcow2' -o -name '*.vmdk' -o -name '*.vdi' \) -delete
+              ;;
+            R2S)
+              rm -rf packages
+              ;;
+          esac
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      # 10-7. 上传固件目录
+      - name: Upload firmware directory
+        uses: actions/upload-artifact@v4
+        if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
+        with:
+          name: OpenWrt_firmware_${{ matrix.target.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      # 10-8. 生成 Release 标签
+      - name: Generate release tag
+        id: tag
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          echo "release_tag=${{ matrix.target.tag_prefix }}-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          touch release.txt
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      # 10-9. 上传固件到 GitHub Release
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v2
+        if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
+        with:
+          token: ${{ secrets.GH_RELEASE_TOKEN }}
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
+
+      # 10-10. 删除历史 workflow 运行记录，仅保留最近2次
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        if: steps.compile.outputs.status == 'success'
+        with:
+          retain_days: 0
+          keep_minimum_runs: 2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+
+      # 10-11. 删除旧的 Releases，只保留最新2次
+      - name: Remove old Releases
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        if: steps.compile.outputs.status == 'success'
+        with:
+          keep_latest: 2
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+
+#=================================================
+# 扩展方法：
+# - 只需在matrix.target下增加{name, config, diy_part, tag_prefix}即可新增平台。
+# - organize files步骤可根据平台做更细致清理。
+# - 若平台间部分feeds/patch需分开，可用if判断matrix.target.name做分流。
+#=================================================
