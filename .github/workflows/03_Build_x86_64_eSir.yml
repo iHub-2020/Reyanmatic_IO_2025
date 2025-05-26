@@ -8,7 +8,7 @@
 name: 03_Build_x86_64_eSir
 
 on: 
-  repository_dispatch:   # 支持通过API外部触发
+  # repository_dispatch:   # 支持通过API外部触发
   workflow_dispatch:     # 支持手动一键触发
 
 jobs:
