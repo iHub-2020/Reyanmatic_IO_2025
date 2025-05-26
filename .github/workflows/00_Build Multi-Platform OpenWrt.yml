@@ -31,14 +31,21 @@ jobs:
             config: x86_64.config
             diy_part: diy-part2.sh
             tag_prefix: x86
+            # x86平台只上传三种虚拟机镜像格式
+            release_patterns: '/*.qcow2 /*.vdi /*.vmdk'
+
           - name: R2S
             config: R2S.config
             diy_part: diy-part3.sh
             tag_prefix: R2S
+            # R2S平台只上传 gz 格式
+            release_patterns: '/*.gz'
+          # 预留新平台模板（如R4S），只需补全config和diy脚本，定义上传格式即可
           # - name: R4S
           #   config: R4S.config
           #   diy_part: diy-part4.sh
           #   tag_prefix: R4S
+          #   release_patterns: '/*.gz'
 
     steps:
       # 1. 编译前空间检查
@@ -176,25 +183,30 @@ jobs:
           name: OpenWrt_bin_${{ matrix.target.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
-      # 10-6. 整理固件文件（平台定制：可按需扩展）
+      # 10-6. 整理固件文件（平台定制化，只保留需要release的固件）
       - name: Organize files
         id: organize
         if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
-          # 如果需要只保留特定格式固件可定制如下（以x86为例）
           case "${{ matrix.target.name }}" in
             x86_64)
+              # 只保留虚拟机镜像格式
               find . -type f ! \( -name '*.qcow2' -o -name '*.vmdk' -o -name '*.vdi' \) -delete
               ;;
             R2S)
-              rm -rf packages
+              # 只保留.gz格式
+              find . -type f ! -name '*.gz' -delete
               ;;
+            # R4S)
+              # 只保留.gz格式
+              # find . -type f ! -name '*.gz' -delete
+              # ;;
           esac
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
 
-      # 10-7. 上传固件目录
+      # 10-7. 上传固件目录（可选，artifact归档）
       - name: Upload firmware directory
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
@@ -211,7 +223,7 @@ jobs:
           touch release.txt
           echo "status=success" >> $GITHUB_OUTPUT
 
-      # 10-9. 上传固件到 GitHub Release
+      # 10-9. 上传固件到 GitHub Release（按平台精确控制格式）
       - name: Upload firmware to release
         uses: softprops/action-gh-release@v2
         if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
@@ -219,7 +231,8 @@ jobs:
           token: ${{ secrets.GH_RELEASE_TOKEN }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
-          files: ${{ env.FIRMWARE }}/*
+          files: |
+            ${{ env.FIRMWARE }}${{ matrix.target.release_patterns }}
 
       # 10-10. 删除历史 workflow 运行记录，仅保留最近2次
       - name: Delete workflow runs
@@ -243,7 +256,7 @@ jobs:
 
 #=================================================
 # 扩展方法：
-# - 只需在matrix.target下增加{name, config, diy_part, tag_prefix}即可新增平台。
+# - 只需在matrix.target下增加{name, config, diy_part, tag_prefix, release_patterns}即可新增平台。
 # - organize files步骤可根据平台做更细致清理。
 # - 若平台间部分feeds/patch需分开，可用if判断matrix.target.name做分流。
 #=================================================
