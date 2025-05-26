@@ -103,19 +103,19 @@ uci commit system
 # ---------- 自定义网络参数 ----------
 # WAN 设置为 PPPoE (请根据实际情况填写用户名和密码)
 uci set network.wan.proto='pppoe'
-uci set network.wan.username='' # 示例: 您的PPPoE用户名
-uci set network.wan.password='' # 示例: 您的PPPoE密码
-uci set network.wan.ifname='eth1' # WAN口网卡，x86通常是eth0或eth1, 根据实际调整
+uci set network.wan.username=''                           # 示例: 您的PPPoE用户名
+uci set network.wan.password=''                           # 示例: 您的PPPoE密码
+uci set network.wan.ifname='eth1'                         # WAN口网卡，x86通常是eth0或eth1, 根据实际调整
 
 # WAN6 设置为 DHCPv6
-uci set network.wan6.proto='dhcpv6' # 通常为 dhcpv6
-uci set network.wan6.ifname='@wan' # 通常关联到wan接口
+uci set network.wan6.proto='dhcpv6'                       # 通常为 dhcpv6
+uci set network.wan6.ifname='@wan'                        # 通常关联到wan接口
 
 # LAN 设置
 uci set network.lan.ipaddr='192.168.1.198'
 uci set network.lan.proto='static'
-# uci set network.lan.type='bridge' # 如果LAN是桥接多个接口，取消此行注释
-uci set network.lan.ifname='eth0' # LAN口网卡, 根据实际调整
+# uci set network.lan.type='bridge'                       # 如果LAN是桥接多个接口，取消此行注释
+uci set network.lan.ifname='eth0'                         # LAN口网卡, 根据实际调整
 uci commit network
 
 # ---------- 如需改默认密码请在此插入（hash需自行生成） ----------
