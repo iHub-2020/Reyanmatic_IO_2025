@@ -86,11 +86,28 @@ if [ -f "$ZZZ_DEFAULT_SETTINGS_PATH" ]; then
 
 # ==> R2S 自定义设置开始 (由 diy-part3.sh 添加) <==
 
-# ---------- 自定义主机名和登录密码 ----------
+# ---------- R2S自定义主机名 ----------
 uci set system.@system[0].hostname='Reyanmatic'
-root_password_hash='$1$PrH5T/M2$bJ/LEDMMUQ0vj4vhg7jeC.'   # 替换为您的密码hash
-uci set system.@system[0].password="$root_password_hash"
+# 主机名设置后，可以单独commit，或与其他uci更改一起在末尾commit
+# 为确保主机名更改生效，我们在这里提交 system 表的更改。
 uci commit system
+
+# ---------- R2S自定义登录密码 (通过直接修改 /etc/shadow) ----------
+# 下面这行会在 zzz-default-settings 脚本执行时定义一个名为 root_password_hash 的shell变量
+root_password_hash='$1$PrH5T/M2$bJ/LEDMMUQ0vj4vhg7jeC.' # 替换为您的密码hash
+
+# 检查 /etc/shadow 文件是否存在
+if [ -f /etc/shadow ]; then
+  # 当 zzz-default-settings 脚本执行时，下面的 sed 命令会运行。
+  # sed 命令中的双引号允许 $root_password_hash 变量被展开（使用的是在 zzz-default-settings 中定义的那个变量）。
+  # 使用 @ 作为 sed 的分隔符，以避免密码哈希中可能存在的 / 字符造成冲突。
+  # 此命令会查找以 "root:" 开头的行，并将其第二个冒号分隔的字段（即密码哈希）替换为新的哈希。
+  sed -i "s@^root:[^:]*:@root:$root_password_hash:@g" /etc/shadow
+  echo "[INFO zzz-default-settings] Root password in /etc/shadow has been updated via sed."
+else
+  echo "[WARN zzz-default-settings] /etc/shadow not found. Cannot set root password via sed."
+fi
+# 注意：通过 sed 修改 /etc/shadow 后，不需要再为密码执行 uci commit system。
 
 # ---------- 自定义网络参数 (R2S 特定) ----------
 # 对于 NanoPi R2S:
