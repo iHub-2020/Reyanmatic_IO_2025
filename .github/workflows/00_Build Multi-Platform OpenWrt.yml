@@ -26,26 +26,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
+        include: # 修改点：使用 include 定义矩阵
           - name: x86_64
             config: x86_64.config
             diy_part: diy-part2.sh
             tag_prefix: x86
-            # x86平台只上传三种虚拟机镜像格式
-            release_patterns: '/*.qcow2 /*.vdi /*.vmdk'
-
+            # release_patterns 已移除，因为 "Organize files" 步骤会处理文件筛选
           - name: R2S
             config: R2S.config
             diy_part: diy-part3.sh
             tag_prefix: R2S
-            # R2S平台只上传 gz 格式
-            release_patterns: '/*.gz'
+            # release_patterns 已移除
           # 预留新平台模板（如R4S），只需补全config和diy脚本，定义上传格式即可
           # - name: R4S
           #   config: R4S.config
           #   diy_part: diy-part4.sh
           #   tag_prefix: R4S
-          #   release_patterns: '/*.gz'
 
     steps:
       # 1. 编译前空间检查
@@ -131,11 +127,11 @@ jobs:
           # 拷贝 files 目录（如有）
           [ -e files ] && cp -rf files openwrt/files
           # 拷贝对应平台 config
-          cp ${{ matrix.target.config }} openwrt/.config
+          cp ${{ matrix.config }} openwrt/.config # 修改点：matrix.target.config -> matrix.config
           # 执行对应平台的自定义脚本
-          chmod +x ${{ matrix.target.diy_part }}
+          chmod +x ${{ matrix.diy_part }} # 修改点：matrix.target.diy_part -> matrix.diy_part
           cd openwrt
-          $GITHUB_WORKSPACE/${{ matrix.target.diy_part }}
+          $GITHUB_WORKSPACE/${{ matrix.diy_part }} # 修改点：matrix.target.diy_part -> matrix.diy_part
 
       # 10-2. 补全配置并下载dl依赖包
       - name: Make defconfig & Download packages
@@ -180,7 +176,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success'
         with:
-          name: OpenWrt_bin_${{ matrix.target.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          name: OpenWrt_bin_${{ matrix.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }} # 修改点：matrix.target.name -> matrix.name
           path: openwrt/bin
 
       # 10-6. 整理固件文件（平台定制化，只保留需要release的固件）
@@ -189,7 +185,7 @@ jobs:
         if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
-          case "${{ matrix.target.name }}" in
+          case "${{ matrix.name }}" in # 修改点：matrix.target.name -> matrix.name
             x86_64)
               # 只保留虚拟机镜像格式
               find . -type f ! \( -name '*.qcow2' -o -name '*.vmdk' -o -name '*.vdi' \) -delete
@@ -198,12 +194,12 @@ jobs:
               # 只保留.gz格式
               find . -type f ! -name '*.gz' -delete
               ;;
-            # R4S)
+            # R4S) # 如果取消注释，这里的 matrix.name 也是正确的
               # 只保留.gz格式
               # find . -type f ! -name '*.gz' -delete
               # ;;
           esac
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          echo "FIRMWARE_DIR=$PWD" >> $GITHUB_ENV # 修改点：FIRMWARE -> FIRMWARE_DIR
           echo "status=success" >> $GITHUB_OUTPUT
 
       # 10-7. 上传固件目录（可选，artifact归档）
@@ -211,15 +207,15 @@ jobs:
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
         with:
-          name: OpenWrt_firmware_${{ matrix.target.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: ${{ env.FIRMWARE }}
+          name: OpenWrt_firmware_${{ matrix.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }} # 修改点：matrix.target.name -> matrix.name
+          path: ${{ env.FIRMWARE_DIR }} # 修改点：env.FIRMWARE -> env.FIRMWARE_DIR
 
       # 10-8. 生成 Release 标签
       - name: Generate release tag
         id: tag
         if: steps.compile.outputs.status == 'success'
         run: |
-          echo "release_tag=${{ matrix.target.tag_prefix }}-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          echo "release_tag=${{ matrix.tag_prefix }}-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT # 修改点：matrix.target.tag_prefix -> matrix.tag_prefix
           touch release.txt
           echo "status=success" >> $GITHUB_OUTPUT
 
@@ -231,8 +227,8 @@ jobs:
           token: ${{ secrets.GH_RELEASE_TOKEN }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
-          files: |
-            ${{ env.FIRMWARE }}${{ matrix.target.release_patterns }}
+          files: | # 修改点：使用 FIRMWARE_DIR 并上传该目录所有文件
+            ${{ env.FIRMWARE_DIR }}/*
 
       # 10-10. 删除历史 workflow 运行记录，仅保留最近2次
       - name: Delete workflow runs
@@ -242,7 +238,7 @@ jobs:
           retain_days: 0
           keep_minimum_runs: 2
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }} # 确保这个 secret 被正确设置
 
       # 10-11. 删除旧的 Releases，只保留最新2次
       - name: Remove old Releases
@@ -252,11 +248,11 @@ jobs:
           keep_latest: 2
           delete_tags: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }} # 确保这个 secret 被正确设置
 
 #=================================================
 # 扩展方法：
-# - 只需在matrix.target下增加{name, config, diy_part, tag_prefix, release_patterns}即可新增平台。
-# - organize files步骤可根据平台做更细致清理。
-# - 若平台间部分feeds/patch需分开，可用if判断matrix.target.name做分流。
+# - 只需在matrix.include下增加包含{name, config, diy_part, tag_prefix}的对象即可新增平台。
+# - organize files步骤可根据平台(matrix.name)做更细致清理。
+# - 若平台间部分feeds/patch需分开，可用if判断matrix.name做分流。
 #=================================================
