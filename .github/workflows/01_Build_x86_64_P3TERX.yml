@@ -245,7 +245,7 @@ jobs:
       
       # 20. 删除旧的 Releases，只保留最新2次
       - name: Remove old Releases
-        uses: dev-drprasad/delete-older-releases@v0.3.3
+        uses: dev-drprasad/delete-older-releases@v0.3.4
         if: steps.compile.outputs.status == 'success'
         with:
           keep_latest: 2
