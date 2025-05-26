@@ -19,8 +19,8 @@ on:
     # CRON 表达式使用 UTC 时间
     # 每周五 00:00 UTC (用于"每两周"的逻辑判断 - 选择奇数周的周五执行检查)
     - cron: '0 0 * * 5'
-    # 每月1号 00:00 UTC 强制触发构建 (替代之前的月底逻辑)
-    - cron: '0 0 1 * *' # 修改点：改为每月1号运行
+    # 每月1号 00:00 UTC 强制触发构建
+    - cron: '0 0 1 * *'
 
 jobs:
   check_and_trigger_build:
@@ -59,7 +59,7 @@ jobs:
                 echo "==> Logic: Not a target Friday (Even Week #$WEEK_NUM). No action for upstream check."
               fi
             elif [ "$SCHEDULED_CRON" == "0 0 1 * *" ]; then # 每月1号 (用于强制构建)
-              TRIGGER_REASON="Monthly Force Trigger (1st of Month)" # 修改点：更新触发原因描述
+              TRIGGER_REASON="Monthly Force Trigger (1st of Month)"
               SHOULD_CHECK_UPSTREAM=false # 每月1号强制构建，无需检查上游
               echo "==> Logic: First day of month detected. Will force build."
             fi
@@ -101,10 +101,16 @@ jobs:
       # 5. 根据逻辑判断是否触发构建，并执行 repository dispatch
       - name: Decide and Trigger Multi-Platform Build Workflow
         id: dispatch
+        # 条件判断说明：
+        # 1. 手动触发: steps.trigger_logic.outputs.reason == 'Manual Trigger'
+        # 2. 双周检查并有更新:
+        #    - reason 包含 'Bi-weekly Check (Odd Week Friday)'
+        #    - 并且 steps.cacheHash.outputs.cache-hit != 'true' (表示上游有新commit或首次缓存)
+        # 3. 每月1号强制触发: steps.trigger_logic.outputs.reason == 'Monthly Force Trigger (1st of Month)'
         if: |
           (steps.trigger_logic.outputs.reason == 'Manual Trigger') ||
           (contains(steps.trigger_logic.outputs.reason, 'Bi-weekly Check (Odd Week Friday)') && steps.cacheHash.outputs.cache-hit != 'true') ||
-          (steps.trigger_logic.outputs.reason == 'Monthly Force Trigger (1st of Month)') # 修改点：更新条件中的原因字符串
+          (steps.trigger_logic.outputs.reason == 'Monthly Force Trigger (1st of Month)')
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.GH_RELEASE_TOKEN }}
