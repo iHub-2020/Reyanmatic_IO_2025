@@ -101,12 +101,6 @@ jobs:
       # 5. 根据逻辑判断是否触发构建，并执行 repository dispatch
       - name: Decide and Trigger Multi-Platform Build Workflow
         id: dispatch
-        # 条件判断说明：
-        # 1. 手动触发: steps.trigger_logic.outputs.reason == 'Manual Trigger'
-        # 2. 双周检查并有更新:
-        #    - reason 包含 'Bi-weekly Check (Odd Week Friday)'
-        #    - 并且 steps.cacheHash.outputs.cache-hit != 'true' (表示上游有新commit或首次缓存)
-        # 3. 每月1号强制触发: steps.trigger_logic.outputs.reason == 'Monthly Force Trigger (1st of Month)'
         if: |
           (steps.trigger_logic.outputs.reason == 'Manual Trigger') ||
           (contains(steps.trigger_logic.outputs.reason, 'Bi-weekly Check (Odd Week Friday)') && steps.cacheHash.outputs.cache-hit != 'true') ||
@@ -131,5 +125,6 @@ jobs:
           token: ${{ secrets.GH_RELEASE_TOKEN }}
           repository: ${{ github.repository }}
           retain_days: 0
-          keep_minimum_runs: 3
-          workflow_id: ${{ github.workflow_id }}
+          keep_minimum_runs: 5 # 保留此检查器工作流的最近5次运行
+          # 使用 delete_workflow_pattern 来指定仅删除此工作流 (05_Update-Checker.yml) 的运行记录
+          delete_workflow_pattern: "05_Update-Checker.yml"
