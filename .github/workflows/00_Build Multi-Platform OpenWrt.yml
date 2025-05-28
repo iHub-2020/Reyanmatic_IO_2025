@@ -230,22 +230,22 @@ jobs:
           files: | # 修改点：使用 FIRMWARE_DIR 并上传该目录所有文件
             ${{ env.FIRMWARE_DIR }}/*
 
-      # 10-10. 删除历史 workflow 运行记录，仅保留最近2次
+      # 10-10. 删除历史 workflow 运行记录，仅保留最近3次
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         if: steps.compile.outputs.status == 'success'
         with:
           retain_days: 0
-          keep_minimum_runs: 2
+          keep_minimum_runs: 3
         env:
           GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }} # 确保这个 secret 被正确设置
 
-      # 10-11. 删除旧的 Releases，只保留最新2次
+      # 10-11. 删除旧的 Releases，只保留最新3次
       - name: Remove old Releases
         uses: dev-drprasad/delete-older-releases@v0.3.4
         if: steps.compile.outputs.status == 'success'
         with:
-          keep_latest: 2
+          keep_latest: 3
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }} # 确保这个 secret 被正确设置
