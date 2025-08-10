@@ -23,14 +23,17 @@ env:
   FEEDS_CONF: feeds.conf.default
   TZ: Asia/Shanghai
 
-# [2025-08-10] 修改: 可选并发分组，避免多个矩阵/并发运行时相互影响清理；不取消进行中的任务
-concurrency:
-  group: ${{ github.workflow }}-${{ matrix.name || 'single' }}
-  cancel-in-progress: false
+# [2025-08-10] HOTFIX: 删除了放在“工作流顶层”的 concurrency（此前引用了 matrix 导致无效）
+# 原错误原因：顶层无法访问 matrix 上下文；已将 concurrency 下沉到作业级（见 jobs.build.concurrency）
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # [2025-08-10] HOTFIX: 将 concurrency 下沉到作业级，matrix.name 在这里可用
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.name || 'single' }}
+      cancel-in-progress: false
 
     # 矩阵定义支持多个平台，未来可继续扩展
     strategy:
@@ -234,7 +237,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }} # [2025-08-10] 修改: 强制使用 PAT（GH_RELEASE_TOKEN）
+          token: ${{ secrets.GH_RELEASE_TOKEN }} # [2025-08-10] 修改: 强制使用细粒度 PAT（GH_RELEASE_TOKEN）
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           files: | # 修改点：使用 FIRMWARE_DIR 并上传该目录所有文件
@@ -246,11 +249,11 @@ jobs:
         if: steps.compile.outputs.status == 'success'
         continue-on-error: true # [2025-08-10] 修改: 清理失败不影响整体构建状态
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }}   # [2025-08-10] 修改: 改为通过 with 传 PAT
-          repository: ${{ github.repository }}     # [2025-08-10] 修改: 显式指定仓库，避免默认失败
+          token: ${{ secrets.GH_RELEASE_TOKEN }}   # [2025-08-10] 修改: 通过 with 传 PAT（避免回落到只读 GITHUB_TOKEN）
+          repository: ${{ github.repository }}     # [2025-08-10] 修改: 显式指定仓库
           retain_days: 0
           keep_minimum_runs: 3
-          # [2025-08-10] 修改: 使用工作流“名称”进行匹配，避免误清理其它工作流
+          # [2025-08-10] 修改: 用工作流“名称”进行匹配，避免误清理其它工作流
           delete_workflow_pattern: "00_Build_OpenWrt_Matrix"
 
       # 10-11. 删除旧的 Releases，只保留最新3次
@@ -263,6 +266,7 @@ jobs:
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }} # 确保这个 secret 被正确设置（PAT）
+
 #=================================================
 # 扩展方法：
 # - 只需在matrix.include下增加包含{name, config, diy_part, tag_prefix}的对象即可新增平台。
