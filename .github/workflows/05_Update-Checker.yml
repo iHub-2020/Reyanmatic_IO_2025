@@ -8,6 +8,11 @@
 
 name: 05_Update_Checker
 
+# [2025-08-10] 修改: 显式声明权限，便于（将来如切换到 GITHUB_TOKEN 时）具备写权限；对使用 PAT 不冲突
+permissions:
+  contents: write # [2025-08-10] 修改: 允许写入内容（Release/Tag等）
+  actions: write  # [2025-08-10] 修改: 允许调用 repository_dispatch、删除 workflow runs
+
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede # 上游源码仓库 URL
   REPO_BRANCH: master # 上游源码仓库分支
@@ -107,7 +112,7 @@ jobs:
           (steps.trigger_logic.outputs.reason == 'Monthly Force Trigger (1st of Month)')
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }}
+          token: ${{ secrets.GH_RELEASE_TOKEN }} # [2025-08-10] 修改: 强制使用 PAT（GH_RELEASE_TOKEN）
           repository: ${{ github.repository }}
           event-type: ${{ env.TARGET_EVENT_TYPE }}
           client-payload: >
@@ -120,11 +125,12 @@ jobs:
       # 6. 自动清理此 Update-Checker 工作流的历史运行记录
       - name: Delete old workflow runs for this checker
         if: always()
+        continue-on-error: true # [2025-08-10] 修改: 清理失败不阻断整体状态
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }}
-          repository: ${{ github.repository }}
+          token: ${{ secrets.GH_RELEASE_TOKEN }} # [2025-08-10] 修改: 显式通过 with 传 PAT
+          repository: ${{ github.repository }}   # [2025-08-10] 修改: 显式指向当前仓库
           retain_days: 0
           keep_minimum_runs: 3 # 保留此检查器工作流的最近3次运行
-          # 使用 delete_workflow_pattern 来指定仅删除此工作流 (05_Update-Checker.yml) 的运行记录
-          delete_workflow_pattern: "05_Update-Checker.yml"
+          # [2025-08-10] 修改: 使用工作流“名称”匹配，而非文件名，提升匹配准确度
+          delete_workflow_pattern: "05_Update_Checker"
