@@ -132,6 +132,6 @@ jobs:
           token: ${{ secrets.GH_RELEASE_TOKEN }} # [2025-08-10] 修改: 显式通过 with 传入 PAT
           repository: ${{ github.repository }}   # [2025-08-10] 修改: 显式指定当前仓库
           retain_days: 0
-          keep_minimum_runs: 3 # 保留此检查器工作流的最近3次运行
+          keep_minimum_runs: 4 # 保留此检查器工作流的最近3次运行
           # [2025-08-10] 修改: 使用工作流“名称”匹配（不是文件名），提升匹配准确度
           delete_workflow_pattern: "05_Update_Checker"
