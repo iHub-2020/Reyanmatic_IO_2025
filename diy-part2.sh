@@ -24,6 +24,24 @@ if [ ! -d "$RESOURCES_DIR" ]; then
   exit 1
 fi
 
+# --- 核心编译环境修复 (Fixes) ---
+
+# [FIX] 修复 erofs-utils 编译 404/下载失败问题
+# 原因：默认的 git.kernel.org 经常在 GitHub Actions 中连接超时或被重置。
+# 方案：强制将 tools/erofs-utils/Makefile 中的 git 协议替换为 https，提高连接成功率。
+#       这不会改变版本号，也不会导致 Hash 校验失败（因为文件内容一致）。
+if [ -f "tools/erofs-utils/Makefile" ]; then
+    echo "[INFO] 检测到 erofs-utils，正在应用下载协议修复..."
+    # 将 git:// 替换为 https://
+    sed -i 's/git:\/\//https:\/\//g' tools/erofs-utils/Makefile
+    # 备选：如果 kernel.org 彻底挂了，可以考虑取消下面这行的注释，切换到 github 镜像（注意：可能需要同步更新 Hash）
+    # sed -i 's/git\.kernel\.org\/pub\/scm\/linux\/kernel\/git\/xiang\/erofs-utils\.git/github.com\/erofs\/erofs-utils/g' tools/erofs-utils/Makefile
+    echo "[INFO] erofs-utils 下载协议已修正为 HTTPS。"
+else
+    echo "[WARN] 未找到 tools/erofs-utils/Makefile，跳过 erofs-utils 修复。"
+fi
+
+
 # --- UI 及系统文件修改 ---
 
 # 1. 修改主页Logo
@@ -36,12 +54,21 @@ else
   echo "[WARN] Logo 文件 '$RESOURCES_DIR/logo_openwrt.png' 未找到，跳过替换。"
 fi
 
-# 2. 添加主页广告滚动条 (假设是自定义的JS功能)
+# 2. 添加主页广告滚动条 (假设是自定义的JS功能) 并注入动态编译日期
 # 目标路径: feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/10_system.js
 SYSTEM_JS_TARGET_PATH="feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/10_system.js"
 if [ -f "$RESOURCES_DIR/10_system.js" ]; then
   cp -f "$RESOURCES_DIR/10_system.js" "$SYSTEM_JS_TARGET_PATH"
   echo "[INFO] 已拷贝 10_system.js 到 $SYSTEM_JS_TARGET_PATH"
+
+  # [NEW] 动态替换固件版本日期
+  # 获取当前日期，格式: dd.mm.yyyy (例如: 03.01.2025)
+  BUILD_DATE_VAR=$(date +%d.%m.%Y)
+  
+  # 使用 sed 将 10_system.js 中的占位符 {BUILD_DATE} 替换为实际日期
+  # 确保你的 10_system.js 中包含 'Ver.{BUILD_DATE}' 字符串
+  sed -i "s/{BUILD_DATE}/$BUILD_DATE_VAR/g" "$SYSTEM_JS_TARGET_PATH"
+  echo "[INFO] 已将 10_system.js 中的版本日期更新为: $BUILD_DATE_VAR"
 else
   echo "[WARN] JS 文件 '$RESOURCES_DIR/10_system.js' 未找到，跳过替换。"
 fi
