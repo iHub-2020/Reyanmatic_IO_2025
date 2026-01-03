@@ -1,10 +1,16 @@
 #!/bin/bash
-#=========================================================================
-# Description : OpenWrt DIY script part 3 (After Update feeds) 仅适用于R2S
-# Lisence     : MIT
+#
+# =========================================================================
+# Description : OpenWrt DIY Script Part 2 (After Update Feeds) 仅适用于R2S
+# License     : MIT
 # Author      : Reyanmatic
-# Website     : https:www.reyanmatic.com
-#=========================================================================
+# Website     : https://www.reyanmatic.com
+# Date        : 2025-01-03
+# Version     : 2.1.0
+# Update/Fixed: Added sed command to inject build date into 10_system.js;
+#               Optimized file path handling.
+# =========================================================================
+#
 
 # 当任何命令执行返回非零退出状态时立即退出，有助于早期发现错误。
 set -e
@@ -36,10 +42,20 @@ else
 fi
 
 # 2. 添加主页广告滚动条 (假设是自定义的JS功能)
+# 目标路径: feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/10_system.js
 SYSTEM_JS_TARGET_PATH="feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/10_system.js"
 if [ -f "$RESOURCES_DIR/10_system.js" ]; then
   cp -f "$RESOURCES_DIR/10_system.js" "$SYSTEM_JS_TARGET_PATH"
   echo "[INFO] 已拷贝 10_system.js 到 $SYSTEM_JS_TARGET_PATH"
+
+  # [NEW] 动态替换固件版本日期
+  # 获取当前日期，格式: dd.mm.yyyy (例如: 03.01.2025)
+  BUILD_DATE_VAR=$(date +%d.%m.%Y)
+  
+  # 使用 sed 将 10_system.js 中的占位符 {BUILD_DATE} 替换为实际日期
+  # 确保你的 10_system.js 中包含 'Ver.{BUILD_DATE}' 字符串
+  sed -i "s/{BUILD_DATE}/$BUILD_DATE_VAR/g" "$SYSTEM_JS_TARGET_PATH"
+  echo "[INFO] 已将 10_system.js 中的版本日期更新为: $BUILD_DATE_VAR"
 else
   echo "[WARN] JS 文件 '$RESOURCES_DIR/10_system.js' 未找到，跳过替换。"
 fi
