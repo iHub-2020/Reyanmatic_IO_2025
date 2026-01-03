@@ -1,3 +1,14 @@
+/**
+ * =========================================================================
+ * Description : Custom System Information Page for LuCI (10_system.js)
+ * Lisence     : MIT
+ * Author      : Reyanmatic
+ * Website     : https://www.reyanmatic.com
+ * Note        : Contains custom banner, scrolling text, and dynamic versioning.
+ *               Placeholder {BUILD_DATE} will be replaced by diy-part2.sh.
+ * =========================================================================
+ */
+
 'use strict';
 'require baseclass';
 'require fs';
@@ -183,7 +194,7 @@ return baseclass.extend({
             _('Model'),            boardinfo.model + cpubench.cpubench,
             _('Architecture'),     cpuinfo.cpuinfo || boardinfo.system,
             _('Target Platform'),  (L.isObject(boardinfo.release) ? boardinfo.release.target : ''),
-            _('Firmware Version'), '睿研 定制版 Ver.01.05.2025 / ' + (luciversion || ''),
+            _('Firmware Version'), '睿研 定制版 Ver.{BUILD_DATE} / ' + (luciversion || ''),
             _('Kernel Version'),   boardinfo.kernel,
             _('Local Time'),       datestr,
             _('Uptime'),           systeminfo.uptime ? '%t'.format(systeminfo.uptime) : null,
