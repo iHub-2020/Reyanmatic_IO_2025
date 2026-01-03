@@ -1,10 +1,16 @@
 #!/bin/bash
-#=========================================================================
-# Description : OpenWrt DIY script part 2 (After Update feeds) 仅适用于x86
-# Lisence     : MIT
+#
+# =========================================================================
+# Description : OpenWrt DIY Script Part 2 (After Update Feeds) 仅适用于x86
+# License     : MIT
 # Author      : Reyanmatic
 # Website     : https://www.reyanmatic.com
-#=========================================================================
+# Date        : 2025-01-03
+# Version     : 2.1.0
+# Update/Fixed: Added sed command to inject build date into 10_system.js;
+#               Optimized file path handling.
+# =========================================================================
+#
 
 # 当任何命令执行返回非零退出状态时立即退出，有助于早期发现错误。
 set -e
