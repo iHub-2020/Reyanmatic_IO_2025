@@ -1,10 +1,14 @@
 /**
  * =========================================================================
  * Description : Custom System Information Page for LuCI (10_system.js)
- * Lisence     : MIT
+ * License     : MIT
  * Author      : Reyanmatic
  * Website     : https://www.reyanmatic.com
- * Note        : Contains custom banner, scrolling text, and dynamic versioning.
+ * Date        : 2026-01-03
+ * Version     : 1.2.0
+ * Update/Fixed: Optimized banner CSS styles;
+ *               Fixed scrolling animation smoothness;
+ *               Added standard file header for version tracking.
  *               Placeholder {BUILD_DATE} will be replaced by diy-part2.sh.
  * =========================================================================
  */
