@@ -30,23 +30,6 @@ if [ ! -d "$RESOURCES_DIR" ]; then
   exit 1
 fi
 
-# --- 核心编译环境修复 (Fixes) ---
-
-# [FIX] 修复 erofs-utils 编译 404/下载失败问题
-# 原因：默认的 git.kernel.org 经常在 GitHub Actions 中连接超时或被重置。
-# 方案：强制将 tools/erofs-utils/Makefile 中的 git 协议替换为 https，提高连接成功率。
-#       这不会改变版本号，也不会导致 Hash 校验失败（因为文件内容一致）。
-if [ -f "tools/erofs-utils/Makefile" ]; then
-    echo "[INFO] 检测到 erofs-utils，正在应用下载协议修复..."
-    # 将 git:// 替换为 https://
-    sed -i 's/git:\/\//https:\/\//g' tools/erofs-utils/Makefile
-    # 备选：如果 kernel.org 彻底挂了，可以考虑取消下面这行的注释，切换到 github 镜像（注意：可能需要同步更新 Hash）
-    # sed -i 's/git\.kernel\.org\/pub\/scm\/linux\/kernel\/git\/xiang\/erofs-utils\.git/github.com\/erofs\/erofs-utils/g' tools/erofs-utils/Makefile
-    echo "[INFO] erofs-utils 下载协议已修正为 HTTPS。"
-else
-    echo "[WARN] 未找到 tools/erofs-utils/Makefile，跳过 erofs-utils 修复。"
-fi
-
 # --- UI 及系统文件修改 ---
 
 # 1. 修改主页Logo
