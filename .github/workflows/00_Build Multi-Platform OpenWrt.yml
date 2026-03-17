@@ -7,15 +7,17 @@
 
 name: 00_Build_OpenWrt_Matrix
 
-# [2025-08-10] 修改: 显式声明权限；即便主要用 PAT，也不与之冲突
 permissions:
   contents: write
   actions: write
 
+# 触发条件：
+#   - workflow_dispatch    : 手动在 GitHub Actions 页面点击 "Run workflow"
+#   - repository_dispatch  : 由 05_Update_Checker 检测到上游更新后自动触发
 on:
+  workflow_dispatch:
   repository_dispatch:
     types: [Build_OpenWrt_Matrix]
-  workflow_dispatch:
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -23,49 +25,89 @@ env:
   FEEDS_CONF: feeds.conf.default
   TZ: Asia/Shanghai
 
-# [2025-08-10] HOTFIX: 删除了放在“工作流顶层”的 concurrency（此前引用了 matrix 导致无效）
-# 原错误原因：顶层无法访问 matrix 上下文；已将 concurrency 下沉到作业级（见 jobs.build.concurrency）
-
 jobs:
   build:
+    # -------------------------------------------------------------------------
+    # ⚠️【2026 兼容性说明 — 空间不足根因与修复】
+    #
+    # 现象：2026 年起 apt install 步骤报错
+    #   "E: You don't have enough free space in /var/cache/apt/archives/"
+    #
+    # 根因：ubuntu-latest 在 2026 年初切换到了 ubuntu-24.04。
+    #   与 22.04 相比，24.04 Runner 预装的开发工具更少，导致：
+    #     - antlr3  → 拉入完整 OpenJDK 21（+依赖链）
+    #     - asciidoc/texinfo → 拉入完整 texlive 套件（截图中 205-233 行的大量包）
+    #   apt 所需空间从 ~200MB 暴增至 632MB 下载 + 1659MB 安装。
+    #
+    #   同时，maximize-build-space 会将根分区可用空间压缩至 root-reserve-mb（4096MB），
+    #   此后再跑 apt，根分区剩余空间不足，触发上述报错。
+    #
+    # 修复方案（双管齐下）：
+    #   1. 将 apt install 移到 maximize-build-space 之前（步骤 1），
+    #      利用 Runner 初始状态根分区的完整可用空间完成安装。
+    #   2. 全局加 --no-install-recommends，阻断 texlive/Java 等推荐包被批量拉入，
+    #      将安装体积压回合理范围。
+    # -------------------------------------------------------------------------
     runs-on: ubuntu-latest
 
-    # [2025-08-10] HOTFIX: 将 concurrency 下沉到作业级，matrix.name 在这里可用
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.name || 'single' }}
       cancel-in-progress: false
 
-    # 矩阵定义支持多个平台，未来可继续扩展
     strategy:
       fail-fast: false
       matrix:
-        include: # 修改点：使用 include 定义矩阵
+        include:
           - name: x86_64
             config: x86_64.config
             diy_part: diy-part2.sh
             tag_prefix: x86
-            # release_patterns 已移除，因为 "Organize files" 步骤会处理文件筛选
           - name: R2S
             config: R2S.config
             diy_part: diy-part3.sh
             tag_prefix: R2S
-            # release_patterns 已移除
-          # 预留新平台模板（如R4S），只需补全config和diy脚本，定义上传格式即可
+          # 预留新平台（如 R4S），补全 config 和 diy 脚本后取消注释即可
           # - name: R4S
           #   config: R4S.config
           #   diy_part: diy-part4.sh
           #   tag_prefix: R4S
 
     steps:
-      # 1. 编译前空间检查
+      # -----------------------------------------------------------------------
+      # 步骤 1：初始化环境 & 安装依赖
+      # 【必须是第一步】在 maximize-build-space 之前完成，
+      # 利用 Runner 初始状态根分区的完整可用空间。
+      # --no-install-recommends 防止 antlr3/asciidoc/texinfo 拉入 Java/texlive。
+      # -----------------------------------------------------------------------
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install --no-install-recommends -y \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk \
+            gcc-multilib g++-multilib gettext genisoimage git gperf haveged help2man \
+            intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+            libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev \
+            libpython3-dev libreadline-dev libssl-dev libtool llvm lrzsz libnsl-dev \
+            ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools \
+            python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+            swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
+
+      # 步骤 2：apt 完成后记录根分区状态（调试用）
       - name: Before freeing up disk space
         run: |
-          echo "Before freeing up disk space"
           echo "=============================================================================="
+          echo "Disk usage after apt install, before maximize-build-space:"
           df -hT
           echo "=============================================================================="
 
-      # 2. maximize-build-space：LVM重新挂载build空间，突破14G限制，并清理指定大目录
+      # 步骤 3：LVM 扩容，为编译目录腾出最大空间
       - name: Freeing up disk space
         uses: easimon/maximize-build-space@master
         with:
@@ -77,45 +119,26 @@ jobs:
           remove-codeql: 'true'
           remove-docker-images: 'true'
 
-      # 3. 空间释放后的检查
+      # 步骤 4：扩容后空间检查
       - name: Free up disk space complete
         run: |
-          echo "Free up disk space complete"
           echo "=============================================================================="
+          echo "Disk usage after maximize-build-space:"
           df -hT
           echo "=============================================================================="
 
-      # 4. 拉取仓库
+      # 步骤 5：拉取本仓库（获取 config/scripts 等）
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 5. 初始化环境，安装依赖（只做一次）
-      - name: Initialization environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo -E apt-get -qq update
-          sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
-          genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
-          libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
-          libreadline-dev libssl-dev libtool llvm lrzsz libnsl-dev ninja-build p7zip p7zip-full patch pkgconf \
-          python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
-          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-          
-          sudo -E apt-get -qq autoremove --purge
-          sudo -E apt-get -qq clean
-          sudo timedatectl set-timezone "$TZ"
-          sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
-
-      # 6. 克隆主源码仓库
+      # 步骤 6：克隆上游 OpenWrt 源码
       - name: Clone source code
         run: |
           df -hT $PWD
           git clone ${REPO_URL} -b ${REPO_BRANCH} openwrt
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-      # 7. 加载自定义feeds（只做一次，全局适用）
+      # 步骤 7：加载自定义 feeds
       - name: Load custom feeds
         run: |
           [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
@@ -123,31 +146,29 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/diy-part1.sh
 
-      # 8. 更新 feeds
+      # 步骤 8：更新 feeds
       - name: Update feeds
         run: cd openwrt && ./scripts/feeds update -a
 
-      # 9. 安装 feeds
+      # 步骤 9：安装 feeds
       - name: Install feeds
         run: cd openwrt && ./scripts/feeds install -a
 
-      # 10. 针对每个平台单独编译（以下步骤进入矩阵并行，每个平台环境彼此隔离）
+      # -----------------------------------------------------------------------
+      # 以下步骤进入矩阵并行（每个平台独立执行）
+      # -----------------------------------------------------------------------
 
-      # 10-1. 配置定制化与深度自定义（务必在 make defconfig 前执行）
-      - name: Configuration & Customization (核心步骤)
+      # 步骤 10-1：平台配置 & 自定义脚本
+      - name: Configuration & Customization
         run: |
-          # 清理前一平台残留
           rm -rf openwrt/files
-          # 拷贝 files 目录（如有）
           [ -e files ] && cp -rf files openwrt/files
-          # 拷贝对应平台 config
-          cp ${{ matrix.config }} openwrt/.config # 修改点：matrix.target.config -> matrix.config
-          # 执行对应平台的自定义脚本
-          chmod +x ${{ matrix.diy_part }} # 修改点：matrix.target.diy_part -> matrix.diy_part
+          cp ${{ matrix.config }} openwrt/.config
+          chmod +x ${{ matrix.diy_part }}
           cd openwrt
-          $GITHUB_WORKSPACE/${{ matrix.diy_part }} # 修改点：matrix.target.diy_part -> matrix.diy_part
+          $GITHUB_WORKSPACE/${{ matrix.diy_part }}
 
-      # 10-2. 补全配置并下载dl依赖包
+      # 步骤 10-2：生成完整配置 & 下载依赖包
       - name: Make defconfig & Download packages
         run: |
           cd openwrt
@@ -156,17 +177,15 @@ jobs:
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-      # 10-3. 编译固件（极其依赖空间优化，请保证前面空间优化步骤已完成）
+      # 步骤 10-3：编译固件
       - name: Compile the firmware
         id: compile
         run: |
           cd openwrt
           set -e
-          echo ">>> 检测CPU核心数，准备并发编译..."
-          echo "CPU核心数: $(nproc)"
-          echo ">>> 开始多核并发编译..."
+          echo ">>> CPU 核心数: $(nproc)，开始多核并发编译..."
           if ! make -j$(nproc); then
-            echo "!!! 多核编译失败，尝试单核编译..."
+            echo "!!! 多核编译失败，切换单核..."
             if ! make -j1; then
               echo "!!! 单核也失败，输出详细日志..."
               make -j1 V=s
@@ -174,103 +193,100 @@ jobs:
               exit 1
             fi
           fi
-          echo ">>> 编译成功，写入输出变量"
+          echo ">>> 编译成功"
           echo "status=success" >> $GITHUB_OUTPUT
           grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-      # 10-4. 查看磁盘空间（调试用）
+      # 步骤 10-4：编译后磁盘空间检查
       - name: Check space usage
         if: steps.compile.outputs.status == 'success'
         run: df -hT
 
-      # 10-5. 上传 bin 目录（可选，调试/归档用）
+      # 步骤 10-5：上传 bin 目录（可选，调试/归档）
       - name: Upload bin directory
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success'
         with:
-          name: OpenWrt_bin_${{ matrix.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }} # 修改点：matrix.target.name -> matrix.name
+          name: OpenWrt_bin_${{ matrix.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
           path: openwrt/bin
 
-      # 10-6. 整理固件文件（平台定制化，只保留需要release的固件）
+      # 步骤 10-6：整理固件文件（按平台保留所需格式）
       - name: Organize files
         id: organize
         if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
-          case "${{ matrix.name }}" in # 修改点：matrix.target.name -> matrix.name
+          case "${{ matrix.name }}" in
             x86_64)
               # 只保留虚拟机镜像格式
               find . -type f ! \( -name '*.qcow2' -o -name '*.vmdk' -o -name '*.vdi' \) -delete
               ;;
             R2S)
-              # 只保留.gz格式
+              # 只保留 .gz 格式
               find . -type f ! -name '*.gz' -delete
               ;;
-            # R4S) # 如果取消注释，这里的 matrix.name 也是正确的
-              # 只保留.gz格式
-              # find . -type f ! -name '*.gz' -delete
-              # ;;
+            # R4S)
+            #   find . -type f ! -name '*.gz' -delete
+            #   ;;
           esac
-          echo "FIRMWARE_DIR=$PWD" >> $GITHUB_ENV # 修改点：FIRMWARE -> FIRMWARE_DIR
+          echo "FIRMWARE_DIR=$PWD" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
 
-      # 10-7. 上传固件目录（可选，artifact归档）
+      # 步骤 10-7：上传固件目录（artifact 归档）
       - name: Upload firmware directory
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success' && steps.organize.outputs.status == 'success'
         with:
-          name: OpenWrt_firmware_${{ matrix.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }} # 修改点：matrix.target.name -> matrix.name
-          path: ${{ env.FIRMWARE_DIR }} # 修改点：env.FIRMWARE -> env.FIRMWARE_DIR
+          name: OpenWrt_firmware_${{ matrix.name }}${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE_DIR }}
 
-      # 10-8. 生成 Release 标签
+      # 步骤 10-8：生成 Release 标签
       - name: Generate release tag
         id: tag
         if: steps.compile.outputs.status == 'success'
         run: |
-          echo "release_tag=${{ matrix.tag_prefix }}-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT # 修改点：matrix.target.tag_prefix -> matrix.tag_prefix
+          echo "release_tag=${{ matrix.tag_prefix }}-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
           touch release.txt
           echo "status=success" >> $GITHUB_OUTPUT
 
-      # 10-9. 上传固件到 GitHub Release（按平台精确控制格式）
+      # 步骤 10-9：上传固件到 GitHub Release
       - name: Upload firmware to release
         uses: softprops/action-gh-release@v2
         if: steps.compile.outputs.status == 'success' && steps.tag.outputs.status == 'success'
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }} # [2025-08-10] 修改: 强制使用细粒度 PAT（GH_RELEASE_TOKEN）
+          token: ${{ secrets.GH_RELEASE_TOKEN }}
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
-          files: | # 修改点：使用 FIRMWARE_DIR 并上传该目录所有文件
-            ${{ env.FIRMWARE_DIR }}/*
+          files: ${{ env.FIRMWARE_DIR }}/*
 
-      # 10-10. 删除历史 workflow 运行记录，仅保留最近3次
+      # 步骤 10-10：清理历史 workflow 运行记录（保留最近 4 次）
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         if: steps.compile.outputs.status == 'success'
-        continue-on-error: true # [2025-08-10] 修改: 清理失败不影响整体构建状态
+        continue-on-error: true
         with:
-          token: ${{ secrets.GH_RELEASE_TOKEN }}   # [2025-08-10] 修改: 通过 with 传 PAT（避免回落到只读 GITHUB_TOKEN）
-          repository: ${{ github.repository }}     # [2025-08-10] 修改: 显式指定仓库
+          token: ${{ secrets.GH_RELEASE_TOKEN }}
+          repository: ${{ github.repository }}
           retain_days: 0
           keep_minimum_runs: 4
-          # [2025-08-10] 修改: 用工作流“名称”进行匹配，避免误清理其它工作流
           delete_workflow_pattern: "00_Build_OpenWrt_Matrix"
 
-      # 10-11. 删除旧的 Releases，只保留最新3次
+      # 步骤 10-11：删除旧的 Releases（保留最新 4 次）
       - name: Remove old Releases
         uses: dev-drprasad/delete-older-releases@v0.3.4
         if: steps.compile.outputs.status == 'success'
-        continue-on-error: true # [2025-08-10] 修改: 清理失败不影响整体构建状态
+        continue-on-error: true
         with:
           keep_latest: 4
           delete_tags: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }} # 确保这个 secret 被正确设置（PAT）
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
 
 #=================================================
-# 扩展方法：
-# - 只需在matrix.include下增加包含{name, config, diy_part, tag_prefix}的对象即可新增平台。
-# - organize files步骤可根据平台(matrix.name)做更细致清理。
-# - 若平台间部分feeds/patch需分开，可用if判断matrix.name做分流。
+# 扩展说明：
+# - 新增平台：在 matrix.include 下添加 {name, config, diy_part, tag_prefix} 对象即可。
+# - 固件格式：在 "Organize files" 的 case 语句中添加对应平台的文件过滤规则。
+# - Feeds 差异：如需按平台分流，在相应步骤中用 if [ "${{ matrix.name }}" == "xxx" ] 判断。
 #=================================================
