@@ -16,5 +16,9 @@
 # Add a feed source
 # 添加你需要的reyan源
 echo "src-git reyan https://github.com/iHub-2020/openwrt-reyan_new" >>feeds.conf.default
+
+# Add PassWall2 feed (xiaorouji's new official repository)
+echo 'src-git passwall2 https://github.com/Openwrt-Passwall/openwrt-passwall2' >>feeds.conf.default
+
 #echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
