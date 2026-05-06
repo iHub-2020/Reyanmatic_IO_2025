@@ -13,6 +13,7 @@ permissions:
   actions: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REPO_API: https://api.github.com/repos/coolsnowwolf/lede/commits/master
   TARGET_EVENT_TYPE: Build_OpenWrt_Matrix
 
