@@ -14,8 +14,6 @@ permissions:
 on:
   workflow_dispatch:
     # 仅保留手动触发
-  repository_dispatch:
-    types: [Build_OpenWrt_LEDE]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
