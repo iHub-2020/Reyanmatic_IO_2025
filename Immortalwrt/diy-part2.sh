@@ -22,7 +22,8 @@ set -e
 echo "========== 开始执行 diy-part2.sh =========="
 
 # 定义资源文件目录变量，方便管理和修改
-RESOURCES_DIR="$GITHUB_WORKSPACE/resources" # GITHUB_WORKSPACE 是 GitHub Actions 提供的环境变量，指向仓库根目录
+# 动态获取脚本所在目录下的 resources 文件夹，确保在子目录中也能正确找到
+RESOURCES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resources"
 
 # 检查资源目录是否存在，增加脚本的健壮性
 if [ ! -d "$RESOURCES_DIR" ]; then
