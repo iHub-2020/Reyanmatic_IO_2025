@@ -132,7 +132,7 @@ jobs:
           cd openwrt
           make defconfig
           make download -j8 >/dev/null 2>&1
-          find dl -size -1024c -exec rm -f {} \; 2>/dev/null || true
+          find dl -maxdepth 1 -type f -size -1024c -exec rm -f {} \; 2>/dev/null || true
 
       - name: Build firmware
         id: compile
