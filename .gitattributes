@@ -1,0 +1,4 @@
+# 强制 Linux runner 上执行的脚本/配置使用 LF 行尾，避免 CRLF 导致 bash 报错
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf

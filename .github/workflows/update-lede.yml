@@ -1,0 +1,111 @@
+#              Triggers Build LEDE on upstream changes or manual dispatch.
+
+name: update-lede
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REPO_API: https://api.github.com/repos/coolsnowwolf/lede/commits/master
+  TARGET_EVENT_TYPE: Build_OpenWrt_LEDE
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 6'
+
+jobs:
+  check_and_trigger_build:
+    runs-on: ubuntu-latest
+    outputs:
+      triggered_build: ${{ steps.dispatch.conclusion == 'success' && 'true' || 'false' }}
+      trigger_reason: ${{ steps.trigger_logic.outputs.reason }}
+      upstream_commit: ${{ steps.getHash.outputs.commitHash || 'N/A' }}
+
+    steps:
+      - name: Determine trigger mode
+        id: trigger_logic
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "reason=Manual Trigger (Force Build)" >> $GITHUB_OUTPUT
+            echo "force_build=true"                   >> $GITHUB_OUTPUT
+            echo "==> Manual dispatch: will force-trigger build immediately."
+          else
+            echo "reason=Scheduled Daily Check"       >> $GITHUB_OUTPUT
+            echo "force_build=false"                  >> $GITHUB_OUTPUT
+            echo "==> Scheduled check: will fetch upstream commit hash and compare."
+          fi
+
+      - name: Get upstream commit hash via API
+        id: getHash
+        if: steps.trigger_logic.outputs.force_build == 'false'
+        run: |
+          echo "==> Querying upstream commit hash via GitHub API..."
+          COMMIT_HASH=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ secrets.GH_RELEASE_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "${{ env.REPO_API }}" | jq -r '.sha')
+
+          if [ -z "$COMMIT_HASH" ] || [ "$COMMIT_HASH" == "null" ]; then
+            echo "!!! Failed to fetch commit hash. Aborting."
+            exit 1
+          fi
+
+          echo "==> Latest upstream commit: $COMMIT_HASH"
+          echo "commitHash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+
+      - name: Compare with cached commit hash
+        id: cacheHash
+        if: steps.trigger_logic.outputs.force_build == 'false'
+        uses: actions/cache@v4
+        with:
+          path: .commitHash_coolsnowwolf_lede
+          key: upstream-lede-HEAD-${{ steps.getHash.outputs.commitHash }}
+
+      - name: Save new commit hash to cache
+        if: |
+          steps.trigger_logic.outputs.force_build == 'false' &&
+          steps.cacheHash.outputs.cache-hit != 'true'
+        run: |
+          echo "==> Upstream update detected! Saving hash: ${{ steps.getHash.outputs.commitHash }}"
+          echo "${{ steps.getHash.outputs.commitHash }}" > .commitHash_coolsnowwolf_lede
+
+      - name: Trigger Build LEDE Workflow
+        id: dispatch
+        if: |
+          steps.trigger_logic.outputs.force_build == 'true' ||
+          (steps.trigger_logic.outputs.force_build == 'false' && steps.cacheHash.outputs.cache-hit != 'true')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GH_RELEASE_TOKEN }}
+          repository: ${{ github.repository }}
+          event-type: ${{ env.TARGET_EVENT_TYPE }}
+          client-payload: >
+            {
+              "trigger_reason": "${{ steps.trigger_logic.outputs.reason }}",
+              "upstream_commit_hash": "${{ steps.getHash.outputs.commitHash || 'N/A (manual trigger)' }}",
+              "cache_hit": "${{ steps.cacheHash.outputs.cache-hit || 'N/A (manual trigger)' }}"
+            }
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## update-lede Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ steps.trigger_logic.outputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Upstream Commit | ${{ steps.getHash.outputs.commitHash || 'N/A (manual trigger)' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cache Hit (no update) | ${{ steps.cacheHash.outputs.cache-hit || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Triggered | ${{ steps.dispatch.conclusion == 'success' && 'YES' || (steps.dispatch.conclusion == 'skipped' && 'NO (no upstream change)' || 'NO') }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Delete old workflow runs
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          gh run list --workflow update-lede --repo ${{ github.repository }} --limit 100 --json databaseId,status \
+            -q '[.[] | select(.status != "in_progress")] | .[4:] | .[].databaseId' | \
+            xargs -I{} gh run delete {} --repo ${{ github.repository }} 2>/dev/null || true
