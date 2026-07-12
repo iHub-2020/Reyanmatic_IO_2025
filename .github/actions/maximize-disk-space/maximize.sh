@@ -20,11 +20,11 @@ echo "Preparing build space..."
     sudo swapoff -a; sudo rm -f /mnt/swapfile /swapfile
   fi
   if [ "${INPUT_REMOVE_LARGE_PACKAGES}" = "true" ]; then
-    sudo apt-get -qq purge -y \
+    sudo apt-get -qq -o DPkg::Lock::Timeout=120 purge -y \
       '^aspnetcore-.*' '^dotnet-.*' '^llvm-.*' '^mongodb-.*' '^mysql-.*' \
       'php.*' azure-cli google-cloud-cli google-cloud-sdk \
       google-chrome-stable firefox powershell mono-devel
-    sudo apt-get -qq autoremove --purge -y
+    sudo apt-get -qq -o DPkg::Lock::Timeout=120 autoremove --purge -y
   fi
   sudo rm -rf \
     /usr/share/swift /usr/local/share/powershell /opt/microsoft /usr/lib/jvm \
@@ -32,10 +32,10 @@ echo "Preparing build space..."
     /usr/local/graalvm /usr/local/julia* /usr/local/bin/chromedriver \
     /usr/local/bin/geckodriver /usr/local/bin/edge_driver /opt/az /var/lib/gems \
     /usr/local/share/boost
-  sudo apt-get -qq autoremove --purge -y
+  sudo apt-get -qq -o DPkg::Lock::Timeout=120 autoremove --purge -y
   sudo apt-get -qq clean
   sudo rm -rf /var/lib/apt/lists/*
-} >/dev/null 2>&1 || true
+} || true  # keep output visible for postmortem (B-026)
 
 # Expand build volume: merge free space of / and /mnt via LVM when they are
 # separate disks; otherwise use the root partition directly.
@@ -50,7 +50,7 @@ else
 fi
 
 if [ "${DUAL_DISK}" = "true" ]; then
-  command -v pvcreate >/dev/null 2>&1 || { sudo apt-get -qq update; sudo apt-get -qq install -y lvm2; } >/dev/null 2>&1 || true
+  command -v pvcreate >/dev/null 2>&1 || { sudo apt-get -qq -o DPkg::Lock::Timeout=120 update; sudo apt-get -qq -o DPkg::Lock::Timeout=120 install -y lvm2; } || true  # keep output visible for postmortem (B-026)
   ROOT_RESERVE_KB=$(( INPUT_ROOT_RESERVE_MB * 1024 ))
   ROOT_FREE_KB=$(df --block-size=1024 --output=avail / | tail -1 | tr -d ' ')
   ROOT_LVM_SIZE_BYTES=$(( (ROOT_FREE_KB - ROOT_RESERVE_KB) * 1024 ))
