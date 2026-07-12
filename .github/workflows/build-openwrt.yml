@@ -222,8 +222,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
         run: |
+          # 只清理本构建线（OpenWrt-*）的旧版，避免顶掉另一条线；每线保留 12 个（6 轮 x 双机型）
           gh release list --repo ${{ github.repository }} --limit 100 \
-            --json tagName -q '.[4:] | .[].tagName' | \
+            --json tagName -q '[.[] | select(.tagName | startswith("OpenWrt-"))] | .[12:] | .[].tagName' | \
             while read -r tag; do
               [ -n "$tag" ] && gh release delete "$tag" --repo ${{ github.repository }} --cleanup-tag -y 2>/dev/null || true
             done
