@@ -36,6 +36,10 @@ jobs:
             config: R2S.config
             diy_part: diy-part3.sh
             tag_prefix: R2S
+          - name: R5C
+            config: R5C.config
+            diy_part: diy-part4.sh
+            tag_prefix: R5C
 
     steps:
       - name: Checkout
@@ -171,6 +175,9 @@ jobs:
               find . -type f ! \( -name '*.qcow2' -o -name '*.img.gz' -o -name '*.vmdk' -o -name '*.vdi' \) -delete
               ;;
             R2S)
+              find . -type f ! -name '*.img.gz' -delete
+              ;;
+            R5C)
               find . -type f ! -name '*.img.gz' -delete
               ;;
           esac
