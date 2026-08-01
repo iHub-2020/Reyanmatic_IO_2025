@@ -1,4 +1,8 @@
 
+# ⚠️ 2026-08-01 起 LEDE 线停更（用户决策）：实测 LEDE 与原生 OpenWrt 性能无差别，
+#    今后自动编译仅走原生 OpenWrt 线。本 workflow 保留但只能人工触发。
+#    仓库里最后一次编译出的 LEDE-* Release 长期保留（下方清理步骤已停用）。
+
 name: build-lede
 
 permissions:
@@ -7,8 +11,9 @@ permissions:
 
 on:
   workflow_dispatch:
-  repository_dispatch:
-    types: [Build_OpenWrt_LEDE]
+  # LEDE 线停更：update-lede 的自动 repository_dispatch 已停用。
+  # repository_dispatch:
+  #   types: [Build_OpenWrt_LEDE]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -201,8 +206,11 @@ jobs:
             -q '[.[] | select(.status != "in_progress")] | .[4:] | .[].databaseId' | \
             xargs -I{} gh run delete {} --repo ${{ github.repository }} 2>/dev/null || true
 
+      # ⚠️ LEDE 线停更后本步骤永久停用（if: false）：用户要求最后一次编译出的 LEDE 固件
+      #    长期保留在仓库，任何自动流程都不得删除 LEDE-* Release。
+      #    （build-openwrt 的清理步骤只匹配 startswith("OpenWrt-")，本就不会波及 LEDE-*。）
       - name: Remove old Releases
-        if: steps.compile.outputs.status == 'success'
+        if: false
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}

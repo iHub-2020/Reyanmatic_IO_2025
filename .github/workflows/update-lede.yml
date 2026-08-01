@@ -1,4 +1,9 @@
 #              Triggers Build LEDE on upstream changes or manual dispatch.
+#
+# ⚠️ 2026-08-01 起 LEDE 线停更（用户决策）：实测 LEDE 与原生 OpenWrt 性能无差别，
+#    今后自动编译仅走原生 OpenWrt 线（build-openwrt / update-openwrt）。
+#    → 已移除 schedule 自动触发，仅保留 workflow_dispatch 供必要时人工重编。
+#    → 仓库里已发布的 LEDE-* Release 长期保留，不再被任何自动流程清理。
 
 name: update-lede
 
@@ -13,8 +18,9 @@ env:
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * 6'
+  # LEDE 线已停更：原每周六 02:00 的上游跟随触发已停用（见文件头说明）。
+  # schedule:
+  #   - cron: '0 2 * * 6'
 
 jobs:
   check_and_trigger_build:
