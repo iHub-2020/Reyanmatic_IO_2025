@@ -35,7 +35,7 @@ jobs:
           elif [ "${{ github.event.schedule }}" == "0 2 28 * *" ]; then
             echo "reason=Monthly Forced Build (feeds refresh)" >> $GITHUB_OUTPUT
             echo "force_build=true"                   >> $GITHUB_OUTPUT
-            echo "==> Monthly schedule: force-trigger build (refresh feeds/passwall2 etc.)."
+            echo "==> Monthly schedule: force-trigger build (refresh feeds)."
           else
             echo "reason=Scheduled Weekly Check"      >> $GITHUB_OUTPUT
             echo "force_build=false"                  >> $GITHUB_OUTPUT
@@ -52,8 +52,6 @@ jobs:
           SOURCES="
           openwrt/openwrt|openwrt-25.12|
           vernesong/OpenClash|master|
-          Openwrt-Passwall/openwrt-passwall2|main|
-          Openwrt-Passwall/openwrt-passwall-packages|main|
           openwrt/packages|openwrt-25.12|net/tailscale
           openwrt/luci|openwrt-25.12|applications/luci-app-tailscale-community
           "
