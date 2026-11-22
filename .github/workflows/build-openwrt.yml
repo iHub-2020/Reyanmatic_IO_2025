@@ -15,6 +15,7 @@ on:
         options:
           - all
           - x86-r2s
+          - r5c
   repository_dispatch:
     types: [Build_OpenWrt_Official]
 
@@ -35,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ${{ fromJSON(inputs.targets == 'x86-r2s' && '["x86_64","R2S"]' || '["x86_64","R2S","R5C"]') }}
+        name: ${{ fromJSON(inputs.targets == 'x86-r2s' && '["x86_64","R2S"]' || inputs.targets == 'r5c' && '["R5C"]' || '["x86_64","R2S","R5C"]') }}
 
     steps:
       - name: Checkout
