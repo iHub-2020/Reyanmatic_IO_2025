@@ -7,6 +7,14 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      targets:
+        description: Firmware targets
+        type: choice
+        default: all
+        options:
+          - all
+          - x86-r2s
   repository_dispatch:
     types: [Build_OpenWrt_Official]
 
@@ -27,19 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: x86_64
-            config: x86_64.config
-            diy_part: diy-part2.sh
-            tag_prefix: x86
-          - name: R2S
-            config: R2S.config
-            diy_part: diy-part3.sh
-            tag_prefix: R2S
-          - name: R5C
-            config: R5C.config
-            diy_part: diy-part4.sh
-            tag_prefix: R5C
+        name: ${{ fromJSON(inputs.targets == 'x86-r2s' && '["x86_64","R2S"]' || '["x86_64","R2S","R5C"]') }}
 
     steps:
       - name: Checkout
@@ -118,16 +114,19 @@ jobs:
           ./scripts/feeds install -a >/dev/null 2>&1
 
       - name: Configure
-        env:
-          ROOT_PASSWORD_HASH: ${{ secrets.ROOT_PASSWORD_HASH }}
         run: |
           UPSTREAM="_source/image-build/OpenWrt"
           rm -rf openwrt/files
           [ -d ${UPSTREAM}/files ] && cp -rf ${UPSTREAM}/files openwrt/files
-          cp ${UPSTREAM}/${{ matrix.config }} openwrt/.config
-          chmod +x ${UPSTREAM}/${{ matrix.diy_part }}
+          case "${{ matrix.name }}" in
+            x86_64) diy_part=diy-part2.sh ;;
+            R2S) diy_part=diy-part3.sh ;;
+            R5C) diy_part=diy-part4.sh ;;
+          esac
+          cp ${UPSTREAM}/${{ matrix.name }}.config openwrt/.config
+          chmod +x ${UPSTREAM}/$diy_part
           cd openwrt
-          $GITHUB_WORKSPACE/${UPSTREAM}/${{ matrix.diy_part }} >/dev/null 2>&1 || { echo "customization step failed"; exit 1; }
+          $GITHUB_WORKSPACE/${UPSTREAM}/$diy_part >/dev/null 2>&1 || { echo "customization step failed"; exit 1; }
 
       - name: Prepare packages
         run: |
@@ -192,7 +191,7 @@ jobs:
         id: tag
         if: steps.compile.outputs.status == 'success'
         run: |
-          echo "release_tag=OpenWrt-${{ matrix.tag_prefix }}-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+          echo "release_tag=OpenWrt-${{ matrix.name == 'x86_64' && 'x86' || matrix.name }}-$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
           cat > release.txt <<'RELNOTE'
           Reyanmatic OpenWrt 固件
 
